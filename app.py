@@ -1,11 +1,38 @@
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from src import auth, data
 
 px.defaults.template = "plotly_white"
 px.defaults.color_discrete_sequence = px.colors.qualitative.Set2
+
+
+def add_series_averages(fig: go.Figure) -> go.Figure:
+    """Agrega una línea punteada horizontal con el promedio de cada serie
+    (misma traza/color, en su propio panel si hay facetas)."""
+    extra_traces = []
+    for trace in fig.data:
+        y_values = [v for v in trace.y if v is not None]
+        if not y_values:
+            continue
+        avg = sum(y_values) / len(y_values)
+        extra_traces.append(
+            go.Scatter(
+                x=[trace.x[0], trace.x[-1]],
+                y=[avg, avg],
+                mode="lines",
+                line=dict(color=trace.line.color, width=1.5, dash="dot"),
+                xaxis=trace.xaxis,
+                yaxis=trace.yaxis,
+                showlegend=False,
+                hovertemplate=f"Promedio {trace.name}: {avg:.2f} t/ha<extra></extra>",
+            )
+        )
+    fig.add_traces(extra_traces)
+    return fig
+
 
 st.set_page_config(page_title="Marialicia · Dashboard", layout="wide", page_icon="🌾")
 auth.require_login()
@@ -36,10 +63,13 @@ if seccion.startswith("1"):
     cultivos_sel = st.sidebar.multiselect("Cultivo", cultivos_disponibles, default=cultivos_disponibles)
 
     campana_orden = sorted(df["Campaña"].dropna().unique())
+    campanas_sel = st.sidebar.multiselect("Campaña", campana_orden, default=campana_orden)
+
+    df_f = df[df["Campaña"].isin(campanas_sel)]
 
     # --- Área sembrada por campo ---
     st.header("Evolución de área sembrada por campo")
-    area_campo_df = data.area_sembrada(df, by="Campo")
+    area_campo_df = data.area_sembrada(df_f, by="Campo")
     area_campo_df = area_campo_df[area_campo_df["Campo"].isin(campos_sel)]
 
     fig_area_campo = px.bar(
@@ -58,13 +88,13 @@ if seccion.startswith("1"):
         st.dataframe(area_campo_df.sort_values(["Campaña", "Campo"]), use_container_width=True)
 
     st.caption(
-        "No incluye Soja 2ª (comparte superficie física con el cultivo de 1ª) "
-        "ni Ganadería, Vicia, Moha o Sorgo Granífero."
+        "No incluye Soja 2ª ni Maíz 2ª (comparten superficie física con el "
+        "cultivo de 1ª) ni Ganadería, Vicia, Moha o Sorgo Granífero."
     )
 
     # --- Área sembrada por cultivo ---
     st.header("Evolución de área sembrada por cultivo")
-    area_cultivo_df = data.area_sembrada(df, by="Cultivo")
+    area_cultivo_df = data.area_sembrada(df_f, by="Cultivo")
     area_cultivo_df = area_cultivo_df[area_cultivo_df["Cultivo"].isin(cultivos_sel)]
 
     fig_area_cultivo = px.bar(
@@ -83,15 +113,15 @@ if seccion.startswith("1"):
         st.dataframe(area_cultivo_df.sort_values(["Campaña", "Cultivo"]), use_container_width=True)
 
     st.caption(
-        "No incluye Soja 2ª (comparte superficie física con el cultivo de 1ª) "
-        "ni Ganadería, Vicia, Moha o Sorgo Granífero."
+        "No incluye Soja 2ª ni Maíz 2ª (comparten superficie física con el "
+        "cultivo de 1ª) ni Ganadería, Vicia, Moha o Sorgo Granífero."
     )
 
     st.divider()
 
     # --- Rendimiento por cultivo ---
     st.header("Rendimiento por cultivo")
-    rend_cultivo_df = data.rendimiento(df[df["Campo"].isin(campos_sel)], by=("Campaña", "Cultivo"))
+    rend_cultivo_df = data.rendimiento(df_f[df_f["Campo"].isin(campos_sel)], by=("Campaña", "Cultivo"))
     rend_cultivo_df = rend_cultivo_df[rend_cultivo_df["Cultivo"].isin(cultivos_sel)]
 
     fig_rend_cultivo = px.line(
@@ -105,6 +135,7 @@ if seccion.startswith("1"):
     )
     fig_rend_cultivo.update_traces(line=dict(width=3.5), marker=dict(size=9, line=dict(width=1, color="white")))
     fig_rend_cultivo.update_layout(hovermode="x unified", legend_title_text="Cultivo")
+    add_series_averages(fig_rend_cultivo)
     st.plotly_chart(fig_rend_cultivo, use_container_width=True)
 
     with st.expander("Ver tabla de rendimiento por cultivo"):
@@ -112,7 +143,7 @@ if seccion.startswith("1"):
 
     # --- Rendimiento por cultivo y campo ---
     st.header("Rendimiento por cultivo y campo")
-    rend_df = data.rendimiento(df, by=("Campaña", "Campo", "Cultivo"))
+    rend_df = data.rendimiento(df_f, by=("Campaña", "Campo", "Cultivo"))
     rend_df = rend_df[rend_df["Campo"].isin(campos_sel) & rend_df["Cultivo"].isin(cultivos_sel)]
 
     fig_rend = px.line(
@@ -129,6 +160,7 @@ if seccion.startswith("1"):
     fig_rend.update_traces(line=dict(width=3), marker=dict(size=7, line=dict(width=1, color="white")))
     fig_rend.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], font=dict(size=13)))
     fig_rend.update_layout(legend_title_text="Cultivo", height=650)
+    add_series_averages(fig_rend)
     st.plotly_chart(fig_rend, use_container_width=True)
 
     with st.expander("Ver tabla de rendimiento por cultivo y campo"):
@@ -136,13 +168,14 @@ if seccion.startswith("1"):
 
     st.caption(
         "Rendimiento ponderado por superficie: suma(Dosis × Sup) / suma(Sup), en filas "
-        "con c = 'P' (producción/venta), excluyendo Flete y Seguro."
+        "con c = 'P' (producción/venta), excluyendo Flete y Seguro. La línea punteada "
+        "marca el promedio de cada serie en el período filtrado."
     )
 
     # --- Semáforo: rendimiento vs. promedio histórico del cultivo ---
     st.subheader("Semáforo de rendimiento vs. promedio histórico")
 
-    semaforo_df = data.rendimiento_semaforo(df[df["Campo"].isin(campos_sel)])
+    semaforo_df = data.rendimiento_semaforo(df_f[df_f["Campo"].isin(campos_sel)])
     semaforo_df = semaforo_df[semaforo_df["Cultivo"].isin(cultivos_sel)]
 
     pivot = semaforo_df.pivot(index="Cultivo", columns="Campaña", values="Índice (%)")
@@ -164,7 +197,7 @@ if seccion.startswith("1"):
 
     st.caption(
         "Índice = rendimiento de la campaña / promedio histórico ponderado del cultivo "
-        "(todas las campañas disponibles). Verde oscuro >105% · Verde claro 95–105% · "
+        "(campañas seleccionadas en el filtro). Verde oscuro >105% · Verde claro 95–105% · "
         "Amarillo 90–95% · Rojo <90%."
     )
 
