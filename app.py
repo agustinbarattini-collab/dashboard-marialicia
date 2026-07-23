@@ -28,22 +28,51 @@ if seccion.startswith("1"):
     campos_disponibles = sorted(df["Campo"].dropna().unique())
     campos_sel = st.sidebar.multiselect("Campo", campos_disponibles, default=campos_disponibles)
 
-    # --- Área sembrada ---
-    st.header("Evolución de área sembrada")
-    area_df = data.area_sembrada(df)
-    area_df = area_df[area_df["Campo"].isin(campos_sel)]
+    cultivos_disponibles = sorted(df["Cultivo"].dropna().unique())
+    cultivos_sel = st.sidebar.multiselect("Cultivo", cultivos_disponibles, default=cultivos_disponibles)
 
-    fig_area = px.bar(
-        area_df.sort_values("Campaña"),
+    # --- Área sembrada por campo ---
+    st.header("Evolución de área sembrada por campo")
+    area_campo_df = data.area_sembrada(df, by="Campo")
+    area_campo_df = area_campo_df[area_campo_df["Campo"].isin(campos_sel)]
+
+    fig_area_campo = px.bar(
+        area_campo_df.sort_values("Campaña"),
         x="Campaña",
         y="Superficie sembrada (ha)",
         color="Campo",
         barmode="stack",
+        text_auto=".0f",
     )
-    st.plotly_chart(fig_area, use_container_width=True)
+    fig_area_campo.update_traces(textposition="inside")
+    st.plotly_chart(fig_area_campo, use_container_width=True)
 
-    with st.expander("Ver tabla de área sembrada"):
-        st.dataframe(area_df.sort_values(["Campaña", "Campo"]), use_container_width=True)
+    with st.expander("Ver tabla de área sembrada por campo"):
+        st.dataframe(area_campo_df.sort_values(["Campaña", "Campo"]), use_container_width=True)
+
+    st.caption(
+        "No incluye la superficie de Soja 2ª (se siembra sobre la misma "
+        "superficie física que el cultivo de 1ª, no suma hectáreas nuevas)."
+    )
+
+    # --- Área sembrada por cultivo ---
+    st.header("Evolución de área sembrada por cultivo")
+    area_cultivo_df = data.area_sembrada(df, by="Cultivo")
+    area_cultivo_df = area_cultivo_df[area_cultivo_df["Cultivo"].isin(cultivos_sel)]
+
+    fig_area_cultivo = px.bar(
+        area_cultivo_df.sort_values("Campaña"),
+        x="Campaña",
+        y="Superficie sembrada (ha)",
+        color="Cultivo",
+        barmode="stack",
+        text_auto=".0f",
+    )
+    fig_area_cultivo.update_traces(textposition="inside")
+    st.plotly_chart(fig_area_cultivo, use_container_width=True)
+
+    with st.expander("Ver tabla de área sembrada por cultivo"):
+        st.dataframe(area_cultivo_df.sort_values(["Campaña", "Cultivo"]), use_container_width=True)
 
     st.caption(
         "No incluye la superficie de Soja 2ª (se siembra sobre la misma "
@@ -54,9 +83,6 @@ if seccion.startswith("1"):
 
     # --- Rendimiento ---
     st.header("Rendimiento por campaña, campo y cultivo")
-
-    cultivos_disponibles = sorted(data.rendimiento(df)["Cultivo"].dropna().unique())
-    cultivos_sel = st.sidebar.multiselect("Cultivo", cultivos_disponibles, default=cultivos_disponibles)
 
     rend_df = data.rendimiento(df)
     rend_df = rend_df[rend_df["Campo"].isin(campos_sel) & rend_df["Cultivo"].isin(cultivos_sel)]
