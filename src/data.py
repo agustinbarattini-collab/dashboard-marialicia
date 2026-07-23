@@ -53,10 +53,17 @@ def load_base_df() -> pd.DataFrame:
     return df
 
 
+# Cultivos (codigo Activ) excluidos del calculo de superficie fisica sembrada:
+# S2DA se siembra sobre la misma superficie que el cultivo de 1ra (doble
+# cultivo); GAN, VI, MOHA y SG se excluyen a pedido (no son agricultura de
+# los cultivos principales que se quiere ver en esta evolucion).
+CULTIVOS_EXCLUIDOS_AREA = {"S2DA", "GAN", "VI", "MOHA", "SG"}
+
+
 def area_sembrada(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
-    # La Soja 2da se siembra sobre la misma superficie fisica que el cultivo
-    # de 1ra (doble cultivo), asi que se excluye para no duplicar hectareas.
-    siembra = df[(df["Tipo_norm"] == "SIEMBRA") & (df["Activ_norm"] != "S2DA")]
+    siembra = df[
+        (df["Tipo_norm"] == "SIEMBRA") & (~df["Activ_norm"].isin(CULTIVOS_EXCLUIDOS_AREA))
+    ]
     return (
         siembra.groupby(["Campaña", by], as_index=False)["Sup"]
         .sum()

@@ -51,8 +51,8 @@ if seccion.startswith("1"):
         st.dataframe(area_campo_df.sort_values(["Campaña", "Campo"]), use_container_width=True)
 
     st.caption(
-        "No incluye la superficie de Soja 2ª (se siembra sobre la misma "
-        "superficie física que el cultivo de 1ª, no suma hectáreas nuevas)."
+        "No incluye Soja 2ª (comparte superficie física con el cultivo de 1ª) "
+        "ni Ganadería, Vicia, Moha o Sorgo Granífero."
     )
 
     # --- Área sembrada por cultivo ---
@@ -75,8 +75,8 @@ if seccion.startswith("1"):
         st.dataframe(area_cultivo_df.sort_values(["Campaña", "Cultivo"]), use_container_width=True)
 
     st.caption(
-        "No incluye la superficie de Soja 2ª (se siembra sobre la misma "
-        "superficie física que el cultivo de 1ª, no suma hectáreas nuevas)."
+        "No incluye Soja 2ª (comparte superficie física con el cultivo de 1ª) "
+        "ni Ganadería, Vicia, Moha o Sorgo Granífero."
     )
 
     st.divider()
