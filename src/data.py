@@ -71,10 +71,18 @@ def area_sembrada(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
     )
 
 
-def rendimiento(df: pd.DataFrame) -> pd.DataFrame:
+def rendimiento(df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultivo")) -> pd.DataFrame:
+    """Rendimiento ponderado por superficie: sum(Dosis*Sup) / sum(Sup)."""
     prod_labor_excluido = df["Prod_labor"].str.lower().str.contains("flete|seguro", regex=True)
-    rinde = df[(df["c_norm"] == "P") & (~prod_labor_excluido)]
-    return (
-        rinde.groupby(["Campaña", "Campo", "Cultivo"], as_index=False)
-        .agg(**{"Rendimiento (t/ha)": ("Dosis", "mean"), "Registros": ("Dosis", "count")})
+    rinde = df[
+        (df["c_norm"] == "P") & (~prod_labor_excluido) & df["Sup"].notna() & (df["Sup"] > 0) & df["Dosis"].notna()
+    ].copy()
+    rinde["_ponderado"] = rinde["Dosis"] * rinde["Sup"]
+
+    grouped = rinde.groupby(list(by), as_index=False).agg(
+        _sum_ponderado=("_ponderado", "sum"),
+        _sum_sup=("Sup", "sum"),
+        Registros=("Dosis", "count"),
     )
+    grouped["Rendimiento (t/ha)"] = grouped["_sum_ponderado"] / grouped["_sum_sup"]
+    return grouped.drop(columns=["_sum_ponderado", "_sum_sup"])

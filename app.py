@@ -81,29 +81,45 @@ if seccion.startswith("1"):
 
     st.divider()
 
-    # --- Rendimiento ---
-    st.header("Rendimiento por campaña, campo y cultivo")
+    # --- Rendimiento por cultivo ---
+    st.header("Rendimiento por cultivo")
+    rend_cultivo_df = data.rendimiento(df[df["Campo"].isin(campos_sel)], by=("Campaña", "Cultivo"))
+    rend_cultivo_df = rend_cultivo_df[rend_cultivo_df["Cultivo"].isin(cultivos_sel)]
 
-    rend_df = data.rendimiento(df)
+    fig_rend_cultivo = px.line(
+        rend_cultivo_df.sort_values("Campaña"),
+        x="Campaña",
+        y="Rendimiento (t/ha)",
+        color="Cultivo",
+        markers=True,
+    )
+    st.plotly_chart(fig_rend_cultivo, use_container_width=True)
+
+    with st.expander("Ver tabla de rendimiento por cultivo"):
+        st.dataframe(rend_cultivo_df.sort_values(["Campaña", "Cultivo"]), use_container_width=True)
+
+    # --- Rendimiento por cultivo y campo ---
+    st.header("Rendimiento por cultivo y campo")
+    rend_df = data.rendimiento(df, by=("Campaña", "Campo", "Cultivo"))
     rend_df = rend_df[rend_df["Campo"].isin(campos_sel) & rend_df["Cultivo"].isin(cultivos_sel)]
 
-    fig_rend = px.bar(
+    fig_rend = px.line(
         rend_df.sort_values("Campaña"),
         x="Campaña",
         y="Rendimiento (t/ha)",
         color="Cultivo",
-        barmode="group",
+        markers=True,
         facet_col="Campo",
         facet_col_wrap=2,
     )
     st.plotly_chart(fig_rend, use_container_width=True)
 
-    with st.expander("Ver tabla de rendimiento"):
+    with st.expander("Ver tabla de rendimiento por cultivo y campo"):
         st.dataframe(rend_df.sort_values(["Campaña", "Campo", "Cultivo"]), use_container_width=True)
 
     st.caption(
-        "Rendimiento = promedio de Dosis en filas con c = 'P' (producción/venta), "
-        "excluyendo Flete y Seguro, agrupado por Campaña, Campo y Cultivo (columna Activ)."
+        "Rendimiento ponderado por superficie: suma(Dosis × Sup) / suma(Sup), en filas "
+        "con c = 'P' (producción/venta), excluyendo Flete y Seguro."
     )
 
 elif seccion.startswith("2"):
