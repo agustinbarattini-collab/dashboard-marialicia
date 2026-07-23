@@ -151,3 +151,17 @@ def costo_por_tipo_por_ha(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
         resultado["Costo total (u$)"] / resultado["Has cosechadas"]
     )
     return resultado
+
+
+def costo_por_tipo_por_tn(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
+    """Costo por ha cosechada (por Tipo) dividido por el rendimiento
+    (t/ha) del mismo periodo: costo por tonelada producida."""
+    costo_ha = costo_por_tipo_por_ha(df, by=by)
+    rinde = rendimiento(df, by=("Campaña", by))[["Campaña", by, "Rendimiento (t/ha)"]]
+
+    resultado = costo_ha.merge(rinde, on=["Campaña", by])
+    resultado = resultado[resultado["Rendimiento (t/ha)"] > 0]
+    resultado["Costo por Tn producida (u$/t)"] = (
+        resultado["Costo por ha cosechada (u$/ha)"] / resultado["Rendimiento (t/ha)"]
+    )
+    return resultado

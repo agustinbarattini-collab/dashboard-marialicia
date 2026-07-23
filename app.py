@@ -326,6 +326,64 @@ elif seccion.startswith("2"):
         "por Campaña y Campo (o Cultivo)."
     )
 
+    st.divider()
+
+    # --- Costo por tonelada producida, por Tipo ---
+    st.header("Costo por tonelada producida, por Tipo")
+
+    st.subheader("Por Tipo y Campo")
+    costo_tn_campo_df = data.costo_por_tipo_por_tn(df_f, by="Campo")
+    costo_tn_campo_df = costo_tn_campo_df[costo_tn_campo_df["Campo"].isin(campos_sel)]
+
+    fig_costo_tn_campo = px.bar(
+        costo_tn_campo_df.sort_values("Campaña"),
+        x="Campaña",
+        y="Costo por Tn producida (u$/t)",
+        color="Tipo",
+        barmode="stack",
+        facet_col="Campo",
+        facet_col_wrap=2,
+        category_orders={"Campaña": campana_orden},
+        color_discrete_sequence=tipo_paleta,
+    )
+    fig_costo_tn_campo.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], font=dict(size=13)))
+    fig_costo_tn_campo.update_layout(height=650)
+    st.plotly_chart(fig_costo_tn_campo, use_container_width=True)
+
+    with st.expander("Ver tabla de costo por Tn, por Tipo y Campo"):
+        st.dataframe(
+            costo_tn_campo_df.sort_values(["Campaña", "Campo", "Tipo"]), use_container_width=True
+        )
+
+    st.subheader("Por Tipo y Cultivo")
+    costo_tn_cultivo_df = data.costo_por_tipo_por_tn(df_f, by="Cultivo")
+    costo_tn_cultivo_df = costo_tn_cultivo_df[costo_tn_cultivo_df["Cultivo"].isin(cultivos_sel)]
+
+    fig_costo_tn_cultivo = px.bar(
+        costo_tn_cultivo_df.sort_values("Campaña"),
+        x="Campaña",
+        y="Costo por Tn producida (u$/t)",
+        color="Tipo",
+        barmode="stack",
+        facet_col="Cultivo",
+        facet_col_wrap=2,
+        category_orders={"Campaña": campana_orden},
+        color_discrete_sequence=tipo_paleta,
+    )
+    fig_costo_tn_cultivo.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], font=dict(size=13)))
+    fig_costo_tn_cultivo.update_layout(height=650)
+    st.plotly_chart(fig_costo_tn_cultivo, use_container_width=True)
+
+    with st.expander("Ver tabla de costo por Tn, por Tipo y Cultivo"):
+        st.dataframe(
+            costo_tn_cultivo_df.sort_values(["Campaña", "Cultivo", "Tipo"]), use_container_width=True
+        )
+
+    st.caption(
+        "Costo por Tn producida = Costo por ha cosechada (u$/ha) / Rendimiento (t/ha) "
+        "del mismo Campaña y Campo (o Cultivo)."
+    )
+
 elif seccion.startswith("3"):
     st.title("Ingresos")
     st.info("Próximamente. Avisame y seguimos con esta sección.")
