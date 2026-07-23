@@ -49,6 +49,7 @@ def load_base_df() -> pd.DataFrame:
 
     df["Sup"] = pd.to_numeric(df["Sup"], errors="coerce")
     df["Dosis"] = pd.to_numeric(df["Dosis"], errors="coerce")
+    df["Total u$"] = pd.to_numeric(df["Total u$"], errors="coerce")
 
     return df
 
@@ -99,5 +100,41 @@ def rendimiento_semaforo(df: pd.DataFrame) -> pd.DataFrame:
     resultado = por_campana.merge(promedio_historico, on="Cultivo")
     resultado["Índice (%)"] = (
         resultado["Rendimiento (t/ha)"] / resultado["Promedio histórico (t/ha)"] * 100
+    )
+    return resultado
+
+
+def costo_total(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
+    """Costo total (Total u$) en filas con columna c = 'v'."""
+    gastos = df[df["c_norm"] == "V"]
+    return (
+        gastos.groupby(["Campaña", by], as_index=False)["Total u$"]
+        .sum()
+        .rename(columns={"Total u$": "Costo total (u$)"})
+    )
+
+
+def costo_por_tipo_por_ha(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
+    """Costo por Tipo (columna N), en filas con c = 'v', dividido por las
+    hectáreas cosechadas (Sup en filas con Tipo = Cosecha), agrupado por
+    Campaña y `by` (Campo o Cultivo)."""
+    cosechada = (
+        df[df["Tipo_norm"] == "COSECHA"]
+        .groupby(["Campaña", by], as_index=False)["Sup"]
+        .sum()
+        .rename(columns={"Sup": "Has cosechadas"})
+    )
+
+    costo_tipo = (
+        df[df["c_norm"] == "V"]
+        .groupby(["Campaña", by, "Tipo_norm"], as_index=False)["Total u$"]
+        .sum()
+        .rename(columns={"Total u$": "Costo total (u$)", "Tipo_norm": "Tipo"})
+    )
+
+    resultado = costo_tipo.merge(cosechada, on=["Campaña", by])
+    resultado = resultado[resultado["Has cosechadas"] > 0]
+    resultado["Costo por ha cosechada (u$/ha)"] = (
+        resultado["Costo total (u$)"] / resultado["Has cosechadas"]
     )
     return resultado
