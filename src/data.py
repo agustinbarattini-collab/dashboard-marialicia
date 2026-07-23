@@ -54,7 +54,9 @@ def load_base_df() -> pd.DataFrame:
 
 
 def area_sembrada(df: pd.DataFrame) -> pd.DataFrame:
-    siembra = df[df["Tipo_norm"] == "SIEMBRA"]
+    # La Soja 2da se siembra sobre la misma superficie fisica que el cultivo
+    # de 1ra (doble cultivo), asi que se excluye para no duplicar hectareas.
+    siembra = df[(df["Tipo_norm"] == "SIEMBRA") & (df["Activ_norm"] != "S2DA")]
     return (
         siembra.groupby(["Campaña", "Campo"], as_index=False)["Sup"]
         .sum()

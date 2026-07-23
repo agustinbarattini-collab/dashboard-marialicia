@@ -33,17 +33,22 @@ if seccion.startswith("1"):
     area_df = data.area_sembrada(df)
     area_df = area_df[area_df["Campo"].isin(campos_sel)]
 
-    fig_area = px.line(
+    fig_area = px.bar(
         area_df.sort_values("Campaña"),
         x="Campaña",
         y="Superficie sembrada (ha)",
         color="Campo",
-        markers=True,
+        barmode="stack",
     )
     st.plotly_chart(fig_area, use_container_width=True)
 
     with st.expander("Ver tabla de área sembrada"):
         st.dataframe(area_df.sort_values(["Campaña", "Campo"]), use_container_width=True)
+
+    st.caption(
+        "No incluye la superficie de Soja 2ª (se siembra sobre la misma "
+        "superficie física que el cultivo de 1ª, no suma hectáreas nuevas)."
+    )
 
     st.divider()
 
