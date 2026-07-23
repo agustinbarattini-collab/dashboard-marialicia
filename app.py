@@ -31,6 +31,8 @@ if seccion.startswith("1"):
     cultivos_disponibles = sorted(df["Cultivo"].dropna().unique())
     cultivos_sel = st.sidebar.multiselect("Cultivo", cultivos_disponibles, default=cultivos_disponibles)
 
+    campana_orden = sorted(df["Campaña"].dropna().unique())
+
     # --- Área sembrada por campo ---
     st.header("Evolución de área sembrada por campo")
     area_campo_df = data.area_sembrada(df, by="Campo")
@@ -43,6 +45,7 @@ if seccion.startswith("1"):
         color="Campo",
         barmode="stack",
         text_auto=".0f",
+        category_orders={"Campaña": campana_orden},
     )
     fig_area_campo.update_traces(textposition="inside")
     st.plotly_chart(fig_area_campo, use_container_width=True)
@@ -67,6 +70,7 @@ if seccion.startswith("1"):
         color="Cultivo",
         barmode="stack",
         text_auto=".0f",
+        category_orders={"Campaña": campana_orden},
     )
     fig_area_cultivo.update_traces(textposition="inside")
     st.plotly_chart(fig_area_cultivo, use_container_width=True)
@@ -92,6 +96,8 @@ if seccion.startswith("1"):
         y="Rendimiento (t/ha)",
         color="Cultivo",
         markers=True,
+        line_shape="spline",
+        category_orders={"Campaña": campana_orden},
     )
     st.plotly_chart(fig_rend_cultivo, use_container_width=True)
 
@@ -109,8 +115,10 @@ if seccion.startswith("1"):
         y="Rendimiento (t/ha)",
         color="Cultivo",
         markers=True,
+        line_shape="spline",
         facet_col="Campo",
         facet_col_wrap=2,
+        category_orders={"Campaña": campana_orden},
     )
     st.plotly_chart(fig_rend, use_container_width=True)
 
