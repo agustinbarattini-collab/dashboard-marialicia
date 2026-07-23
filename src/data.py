@@ -24,6 +24,18 @@ ACTIV_MAP = {
     "VI": "Vicia",
 }
 
+# Unifica categorias de Tipo (columna N) que representan el mismo concepto
+# o que se agrupan a pedido bajo un nombre comun.
+TIPO_MAP = {
+    "ALQUILER": "Alquiler",
+    "ALQUILERES": "Alquiler",
+    "FERTILIZACION": "Labores",
+    "PULVERIZACION": "Labores",
+    "SIEMBRA": "Labores",
+    "TAREA": "Labores",
+    "LABOR": "Labores",
+}
+
 
 @st.cache_resource
 def _get_client() -> gspread.Client:
@@ -42,6 +54,7 @@ def load_base_df() -> pd.DataFrame:
     df["Campaña"] = df["Campaña"].astype(str).str.strip()
     df["Campo"] = df["Campo"].astype(str).str.strip().str.title()
     df["Tipo_norm"] = df["Tipo"].astype(str).str.strip().str.upper()
+    df["Tipo_display"] = df["Tipo_norm"].map(TIPO_MAP).fillna(df["Tipo_norm"])
     df["c_norm"] = df["c"].astype(str).str.strip().str.upper()
     df["Prod_labor"] = df["Prod_labor"].astype(str).str.strip()
     df["Activ_norm"] = df["Activ"].astype(str).str.strip().str.upper()
@@ -127,9 +140,9 @@ def costo_por_tipo_por_ha(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
 
     costo_tipo = (
         df[df["c_norm"] == "V"]
-        .groupby(["Campaña", by, "Tipo_norm"], as_index=False)["Total u$"]
+        .groupby(["Campaña", by, "Tipo_display"], as_index=False)["Total u$"]
         .sum()
-        .rename(columns={"Total u$": "Costo total (u$)", "Tipo_norm": "Tipo"})
+        .rename(columns={"Total u$": "Costo total (u$)", "Tipo_display": "Tipo"})
     )
 
     resultado = costo_tipo.merge(cosechada, on=["Campaña", by])
