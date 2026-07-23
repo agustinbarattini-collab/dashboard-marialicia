@@ -3,6 +3,9 @@ import streamlit as st
 
 from src import auth, data
 
+px.defaults.template = "plotly_white"
+px.defaults.color_discrete_sequence = px.colors.qualitative.Set2
+
 st.set_page_config(page_title="Marialicia · Dashboard", layout="wide", page_icon="🌾")
 auth.require_login()
 
@@ -99,6 +102,8 @@ if seccion.startswith("1"):
         line_shape="spline",
         category_orders={"Campaña": campana_orden},
     )
+    fig_rend_cultivo.update_traces(line=dict(width=3.5), marker=dict(size=9, line=dict(width=1, color="white")))
+    fig_rend_cultivo.update_layout(hovermode="x unified", legend_title_text="Cultivo")
     st.plotly_chart(fig_rend_cultivo, use_container_width=True)
 
     with st.expander("Ver tabla de rendimiento por cultivo"):
@@ -120,6 +125,9 @@ if seccion.startswith("1"):
         facet_col_wrap=2,
         category_orders={"Campaña": campana_orden},
     )
+    fig_rend.update_traces(line=dict(width=3), marker=dict(size=7, line=dict(width=1, color="white")))
+    fig_rend.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], font=dict(size=13)))
+    fig_rend.update_layout(legend_title_text="Cultivo", height=650)
     st.plotly_chart(fig_rend, use_container_width=True)
 
     with st.expander("Ver tabla de rendimiento por cultivo y campo"):
