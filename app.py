@@ -1,3 +1,4 @@
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
@@ -136,6 +137,35 @@ if seccion.startswith("1"):
     st.caption(
         "Rendimiento ponderado por superficie: suma(Dosis × Sup) / suma(Sup), en filas "
         "con c = 'P' (producción/venta), excluyendo Flete y Seguro."
+    )
+
+    # --- Semáforo: rendimiento vs. promedio histórico del cultivo ---
+    st.subheader("Semáforo de rendimiento vs. promedio histórico")
+
+    semaforo_df = data.rendimiento_semaforo(df[df["Campo"].isin(campos_sel)])
+    semaforo_df = semaforo_df[semaforo_df["Cultivo"].isin(cultivos_sel)]
+
+    pivot = semaforo_df.pivot(index="Cultivo", columns="Campaña", values="Índice (%)")
+    pivot = pivot.reindex(columns=[c for c in campana_orden if c in pivot.columns])
+
+    def _color_semaforo(val: float) -> str:
+        if pd.isna(val):
+            return ""
+        if val > 105:
+            return "background-color: #1b5e20; color: white"
+        if val >= 95:
+            return "background-color: #a5d6a7; color: black"
+        if val >= 90:
+            return "background-color: #fff59d; color: black"
+        return "background-color: #ef5350; color: white"
+
+    styled_pivot = pivot.style.map(_color_semaforo).format("{:.0f}%", na_rep="—")
+    st.dataframe(styled_pivot, use_container_width=True)
+
+    st.caption(
+        "Índice = rendimiento de la campaña / promedio histórico ponderado del cultivo "
+        "(todas las campañas disponibles). Verde oscuro >105% · Verde claro 95–105% · "
+        "Amarillo 90–95% · Rojo <90%."
     )
 
 elif seccion.startswith("2"):

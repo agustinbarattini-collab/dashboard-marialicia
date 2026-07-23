@@ -86,3 +86,18 @@ def rendimiento(df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultivo
     )
     grouped["Rendimiento (t/ha)"] = grouped["_sum_ponderado"] / grouped["_sum_sup"]
     return grouped.drop(columns=["_sum_ponderado", "_sum_sup"])
+
+
+def rendimiento_semaforo(df: pd.DataFrame) -> pd.DataFrame:
+    """Rendimiento de cada campaña vs. el promedio historico ponderado del
+    mismo cultivo (todas las campañas), como indice (%)."""
+    por_campana = rendimiento(df, by=("Campaña", "Cultivo"))
+    promedio_historico = rendimiento(df, by=("Cultivo",)).rename(
+        columns={"Rendimiento (t/ha)": "Promedio histórico (t/ha)"}
+    )[["Cultivo", "Promedio histórico (t/ha)"]]
+
+    resultado = por_campana.merge(promedio_historico, on="Cultivo")
+    resultado["Índice (%)"] = (
+        resultado["Rendimiento (t/ha)"] / resultado["Promedio histórico (t/ha)"] * 100
+    )
+    return resultado
