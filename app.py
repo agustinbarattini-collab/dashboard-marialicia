@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from plotly.subplots import make_subplots
 
 from src import auth, data
 
@@ -386,7 +387,56 @@ elif seccion.startswith("2"):
 
 elif seccion.startswith("3"):
     st.title("Ingresos")
-    st.info("Próximamente. Avisame y seguimos con esta sección.")
+
+    st.header("Rendimiento y Total u$ / Sup, por campaña y cultivo")
+
+    ing_df = data.ingresos_rendimiento_precio(df_f, by=("Campaña", "Cultivo"))
+    ing_df = ing_df[ing_df["Cultivo"].isin(cultivos_sel)]
+
+    paleta = px.colors.qualitative.Set2
+    cultivos_presentes = sorted(ing_df["Cultivo"].dropna().unique())
+
+    fig_ing = make_subplots(specs=[[{"secondary_y": True}]])
+    for i, cultivo in enumerate(cultivos_presentes):
+        sub = ing_df[ing_df["Cultivo"] == cultivo].sort_values("Campaña")
+        color = paleta[i % len(paleta)]
+        fig_ing.add_trace(
+            go.Bar(
+                x=sub["Campaña"],
+                y=sub["Rendimiento (t/ha)"],
+                name=f"{cultivo} · Rendimiento",
+                marker_color=color,
+                opacity=0.75,
+                legendgroup=cultivo,
+            ),
+            secondary_y=False,
+        )
+        fig_ing.add_trace(
+            go.Scatter(
+                x=sub["Campaña"],
+                y=sub["Total u$ / Sup (u$/ha)"],
+                name=f"{cultivo} · u$/ha",
+                mode="lines+markers",
+                line=dict(color=color, width=3, dash="dot"),
+                marker=dict(size=8, line=dict(width=1, color="white")),
+                legendgroup=cultivo,
+            ),
+            secondary_y=True,
+        )
+
+    fig_ing.update_xaxes(categoryorder="array", categoryarray=campana_orden, title_text="Campaña")
+    fig_ing.update_yaxes(title_text="Rendimiento (t/ha)", secondary_y=False)
+    fig_ing.update_yaxes(title_text="Total u$ / Sup (u$/ha)", secondary_y=True)
+    fig_ing.update_layout(template="plotly_white", barmode="group", height=600, hovermode="x unified")
+    st.plotly_chart(fig_ing, use_container_width=True)
+
+    with st.expander("Ver tabla de rendimiento y u$/ha por campaña y cultivo"):
+        st.dataframe(ing_df.sort_values(["Campaña", "Cultivo"]), use_container_width=True)
+
+    st.caption(
+        "Columnas = Rendimiento (Dosis, t/ha, ponderado por Sup). Línea punteada = "
+        "Total u\\$ / Sup (u\\$/ha, ponderado por Sup). Filas con c = 'P', excluyendo Flete."
+    )
 
 else:
     st.title("Resultados")

@@ -165,3 +165,28 @@ def costo_por_tipo_por_tn(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
         resultado["Costo por ha cosechada (u$/ha)"] / resultado["Rendimiento (t/ha)"]
     )
     return resultado
+
+
+def ingresos_rendimiento_precio(df: pd.DataFrame, by: list[str] = ("Campaña", "Cultivo")) -> pd.DataFrame:
+    """Para filas con c = 'P' (excluyendo Flete en Prod_labor): Rendimiento
+    (Dosis) y Total u$ / Sup, ambos ponderados por superficie."""
+    excluido = df["Prod_labor"].str.lower().str.contains("flete", regex=False)
+    base = df[
+        (df["c_norm"] == "P")
+        & (~excluido)
+        & df["Sup"].notna()
+        & (df["Sup"] > 0)
+        & df["Dosis"].notna()
+        & df["Total u$"].notna()
+    ].copy()
+    base["_dosis_pond"] = base["Dosis"] * base["Sup"]
+
+    grouped = base.groupby(list(by), as_index=False).agg(
+        _sum_dosis_pond=("_dosis_pond", "sum"),
+        _sum_sup=("Sup", "sum"),
+        _sum_total_usd=("Total u$", "sum"),
+        Registros=("Dosis", "count"),
+    )
+    grouped["Rendimiento (t/ha)"] = grouped["_sum_dosis_pond"] / grouped["_sum_sup"]
+    grouped["Total u$ / Sup (u$/ha)"] = grouped["_sum_total_usd"] / grouped["_sum_sup"]
+    return grouped.drop(columns=["_sum_dosis_pond", "_sum_sup", "_sum_total_usd"])
