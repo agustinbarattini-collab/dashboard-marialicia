@@ -63,6 +63,7 @@ def load_base_df() -> pd.DataFrame:
     df["Sup"] = pd.to_numeric(df["Sup"], errors="coerce")
     df["Dosis"] = pd.to_numeric(df["Dosis"], errors="coerce")
     df["Total u$"] = pd.to_numeric(df["Total u$"], errors="coerce")
+    df["Prec_Unitario"] = pd.to_numeric(df["Prec_Unitario"], errors="coerce")
 
     return df
 
@@ -190,3 +191,56 @@ def ingresos_rendimiento_precio(df: pd.DataFrame, by: list[str] = ("Campaña", "
     grouped["Rendimiento (t/ha)"] = grouped["_sum_dosis_pond"] / grouped["_sum_sup"]
     grouped["Total u$ / Sup (u$/ha)"] = grouped["_sum_total_usd"] / grouped["_sum_sup"]
     return grouped.drop(columns=["_sum_dosis_pond", "_sum_sup", "_sum_total_usd"])
+
+
+def precio_venta(df: pd.DataFrame, by: list[str] = ("Campaña", "Cultivo")) -> pd.DataFrame:
+    """Precio de venta (Prec_Unitario) ponderado por Dosis, en filas con
+    c = 'P', excluyendo Flete en Prod_labor."""
+    excluido = df["Prod_labor"].str.lower().str.contains("flete", regex=False)
+    base = df[
+        (df["c_norm"] == "P") & (~excluido) & df["Dosis"].notna() & (df["Dosis"] > 0) & df["Prec_Unitario"].notna()
+    ].copy()
+    base["_precio_pond"] = base["Prec_Unitario"] * base["Dosis"]
+
+    grouped = base.groupby(list(by), as_index=False).agg(
+        _sum_precio_pond=("_precio_pond", "sum"),
+        _sum_dosis=("Dosis", "sum"),
+        Registros=("Dosis", "count"),
+    )
+    grouped["Precio de venta (u$/t)"] = grouped["_sum_precio_pond"] / grouped["_sum_dosis"]
+    return grouped.drop(columns=["_sum_precio_pond", "_sum_dosis"])
+
+
+def precio_semaforo(df: pd.DataFrame) -> pd.DataFrame:
+    """Precio de venta de cada campaña vs. el promedio historico ponderado
+    del mismo cultivo (todas las campañas), como indice (%)."""
+    por_campana = precio_venta(df, by=("Campaña", "Cultivo"))
+    promedio_historico = precio_venta(df, by=("Cultivo",)).rename(
+        columns={"Precio de venta (u$/t)": "Promedio histórico (u$/t)"}
+    )[["Cultivo", "Promedio histórico (u$/t)"]]
+
+    resultado = por_campana.merge(promedio_historico, on="Cultivo")
+    resultado["Índice (%)"] = (
+        resultado["Precio de venta (u$/t)"] / resultado["Promedio histórico (u$/t)"] * 100
+    )
+    return resultado
+
+
+def factor_ingreso(df: pd.DataFrame) -> pd.DataFrame:
+    """Compara, por Campaña y Cultivo, el indice de Rendimiento vs. el
+    indice de Precio de venta (ambos contra su promedio historico
+    ponderado) para identificar que factor explica mejor el ingreso."""
+    rend = rendimiento_semaforo(df)[["Campaña", "Cultivo", "Índice (%)"]].rename(
+        columns={"Índice (%)": "Índice Rendimiento (%)"}
+    )
+    precio = precio_semaforo(df)[["Campaña", "Cultivo", "Índice (%)"]].rename(
+        columns={"Índice (%)": "Índice Precio (%)"}
+    )
+
+    resultado = rend.merge(precio, on=["Campaña", "Cultivo"])
+    dist_rend = (resultado["Índice Rendimiento (%)"] - 100).abs()
+    dist_precio = (resultado["Índice Precio (%)"] - 100).abs()
+    resultado["Factor dominante"] = pd.Series(
+        ["Rendimiento" if r >= p else "Precio" for r, p in zip(dist_rend, dist_precio)]
+    )
+    return resultado

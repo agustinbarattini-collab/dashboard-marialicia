@@ -28,7 +28,7 @@ def add_series_averages(fig: go.Figure) -> go.Figure:
                 xaxis=trace.xaxis,
                 yaxis=trace.yaxis,
                 showlegend=False,
-                hovertemplate=f"Promedio {trace.name}: {avg:.2f} t/ha<extra></extra>",
+                hovertemplate=f"Promedio {trace.name}: {avg:.2f}<extra></extra>",
             )
         )
     fig.add_traces(extra_traces)
@@ -393,12 +393,21 @@ elif seccion.startswith("3"):
     ing_df = data.ingresos_rendimiento_precio(df_f, by=("Campaña", "Cultivo"))
     ing_df = ing_df[ing_df["Cultivo"].isin(cultivos_sel)]
 
+    ing_prom_df = data.ingresos_rendimiento_precio(df_f, by=("Cultivo",))
+    ing_prom_df = ing_prom_df[ing_prom_df["Cultivo"].isin(cultivos_sel)].copy()
+    ing_prom_df["Campaña"] = "Promedio"
+
     paleta = px.colors.qualitative.Set2
     cultivos_presentes = sorted(ing_df["Cultivo"].dropna().unique())
+    campana_orden_prom = list(campana_orden) + ["Promedio"]
 
     fig_ing = make_subplots(specs=[[{"secondary_y": True}]])
     for i, cultivo in enumerate(cultivos_presentes):
-        sub = ing_df[ing_df["Cultivo"] == cultivo].sort_values("Campaña")
+        sub = pd.concat(
+            [ing_df[ing_df["Cultivo"] == cultivo], ing_prom_df[ing_prom_df["Cultivo"] == cultivo]]
+        )
+        sub["Campaña"] = pd.Categorical(sub["Campaña"], categories=campana_orden_prom, ordered=True)
+        sub = sub.sort_values("Campaña")
         color = paleta[i % len(paleta)]
         fig_ing.add_trace(
             go.Bar(
@@ -430,18 +439,93 @@ elif seccion.startswith("3"):
             secondary_y=True,
         )
 
-    fig_ing.update_xaxes(categoryorder="array", categoryarray=campana_orden, title_text="Campaña")
+    fig_ing.update_xaxes(categoryorder="array", categoryarray=campana_orden_prom, title_text="Campaña")
     fig_ing.update_yaxes(title_text="Rendimiento (t/ha)", secondary_y=False)
     fig_ing.update_yaxes(title_text="Total u$ / Sup (u$/ha)", secondary_y=True)
     fig_ing.update_layout(template="plotly_white", barmode="group", height=600, hovermode="x unified")
     st.plotly_chart(fig_ing, use_container_width=True)
 
     with st.expander("Ver tabla de rendimiento y u$/ha por campaña y cultivo"):
-        st.dataframe(ing_df.sort_values(["Campaña", "Cultivo"]), use_container_width=True)
+        st.dataframe(
+            pd.concat([ing_df, ing_prom_df]).sort_values(["Cultivo", "Campaña"]),
+            use_container_width=True,
+        )
 
     st.caption(
         "Columnas = Rendimiento (Dosis, t/ha, ponderado por Sup). Línea punteada = "
-        "Total u\\$ / Sup (u\\$/ha, ponderado por Sup). Filas con c = 'P', excluyendo Flete."
+        "Total u\\$ / Sup (u\\$/ha, ponderado por Sup). Filas con c = 'P', excluyendo Flete. "
+        "\"Promedio\" = promedio histórico ponderado del cultivo en el período filtrado."
+    )
+
+    st.divider()
+
+    # --- Precio de venta ---
+    st.header("Precio de venta por campaña y cultivo")
+
+    precio_df = data.precio_venta(df_f, by=("Campaña", "Cultivo"))
+    precio_df = precio_df[precio_df["Cultivo"].isin(cultivos_sel)]
+
+    fig_precio = px.line(
+        precio_df.sort_values("Campaña"),
+        x="Campaña",
+        y="Precio de venta (u$/t)",
+        color="Cultivo",
+        markers=True,
+        line_shape="spline",
+        text=precio_df["Precio de venta (u$/t)"].round(0),
+        category_orders={"Campaña": campana_orden},
+    )
+    fig_precio.update_traces(
+        mode="lines+markers+text",
+        line=dict(width=3),
+        marker=dict(size=8, line=dict(width=1, color="white")),
+        texttemplate="%{text:.0f}",
+        textposition="top center",
+    )
+    fig_precio.update_layout(hovermode="x unified", legend_title_text="Cultivo")
+    add_series_averages(fig_precio)
+    st.plotly_chart(fig_precio, use_container_width=True)
+
+    with st.expander("Ver tabla de precio de venta"):
+        st.dataframe(precio_df.sort_values(["Campaña", "Cultivo"]), use_container_width=True)
+
+    st.caption(
+        "Precio de venta = Prec_Unitario ponderado por Dosis, en filas con c = 'P', "
+        "excluyendo Flete. La línea punteada marca el promedio de cada serie en el "
+        "período filtrado."
+    )
+
+    st.divider()
+
+    # --- Factor del ingreso: rendimiento vs. precio ---
+    st.header("¿Qué explica el ingreso de cada campaña: rendimiento o precio?")
+
+    factor_df = data.factor_ingreso(df_f)
+    factor_df = factor_df[factor_df["Cultivo"].isin(cultivos_sel)]
+
+    def _color_indice(val: float) -> str:
+        if pd.isna(val):
+            return ""
+        if val > 105:
+            return "background-color: #1b5e20; color: white"
+        if val >= 95:
+            return "background-color: #a5d6a7; color: black"
+        if val >= 90:
+            return "background-color: #fff59d; color: black"
+        return "background-color: #ef5350; color: white"
+
+    styled_factor = (
+        factor_df.sort_values(["Cultivo", "Campaña"])
+        .style.map(_color_indice, subset=["Índice Rendimiento (%)", "Índice Precio (%)"])
+        .format({"Índice Rendimiento (%)": "{:.0f}%", "Índice Precio (%)": "{:.0f}%"})
+    )
+    st.dataframe(styled_factor, use_container_width=True, hide_index=True)
+
+    st.caption(
+        "Cada índice compara la campaña contra el promedio histórico ponderado del "
+        "mismo cultivo (100% = igual al promedio). \"Factor dominante\" = el que más "
+        "se aleja del 100%, es decir el que más explica que el ingreso de esa campaña "
+        "haya sido mejor o peor que lo habitual."
     )
 
 else:
