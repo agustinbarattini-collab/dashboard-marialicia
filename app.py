@@ -530,4 +530,100 @@ elif seccion.startswith("3"):
 
 else:
     st.title("Resultados")
-    st.info("Próximamente. Avisame y seguimos con esta sección.")
+
+    # --- Margen por campo ---
+    st.header("Margen por campo")
+
+    margen_campo_df = data.margen(df_f, by="Campo")
+    margen_campo_df = margen_campo_df[margen_campo_df["Campo"].isin(campos_sel)]
+
+    st.subheader("Margen total (u$)")
+    fig_margen_campo_total = px.bar(
+        margen_campo_df.sort_values("Campaña"),
+        x="Campaña",
+        y="Margen (u$)",
+        color="Campo",
+        barmode="stack",
+        text_auto=".2s",
+        category_orders={"Campaña": campana_orden},
+    )
+    fig_margen_campo_total.update_traces(textposition="inside")
+    st.plotly_chart(fig_margen_campo_total, use_container_width=True)
+
+    st.subheader("Margen por ha sembrada (u$/ha)")
+    fig_margen_campo_ha = px.line(
+        margen_campo_df.sort_values("Campaña"),
+        x="Campaña",
+        y="Margen (u$/ha)",
+        color="Campo",
+        markers=True,
+        line_shape="spline",
+        text=margen_campo_df["Margen (u$/ha)"].round(0),
+        category_orders={"Campaña": campana_orden},
+    )
+    fig_margen_campo_ha.update_traces(
+        mode="lines+markers+text",
+        line=dict(width=3),
+        marker=dict(size=8, line=dict(width=1, color="white")),
+        texttemplate="%{text:.0f}",
+        textposition="top center",
+    )
+    fig_margen_campo_ha.update_layout(hovermode="x unified", legend_title_text="Campo")
+    add_series_averages(fig_margen_campo_ha)
+    st.plotly_chart(fig_margen_campo_ha, use_container_width=True)
+
+    with st.expander("Ver tabla de margen por campo"):
+        st.dataframe(margen_campo_df.sort_values(["Campaña", "Campo"]), use_container_width=True)
+
+    st.divider()
+
+    # --- Margen por actividad (cultivo) ---
+    st.header("Margen por actividad (cultivo)")
+
+    margen_cultivo_df = data.margen(df_f, by="Cultivo")
+    margen_cultivo_df = margen_cultivo_df[margen_cultivo_df["Cultivo"].isin(cultivos_sel)]
+
+    st.subheader("Margen total (u$)")
+    fig_margen_cultivo_total = px.bar(
+        margen_cultivo_df.sort_values("Campaña"),
+        x="Campaña",
+        y="Margen (u$)",
+        color="Cultivo",
+        barmode="stack",
+        text_auto=".2s",
+        category_orders={"Campaña": campana_orden},
+    )
+    fig_margen_cultivo_total.update_traces(textposition="inside")
+    st.plotly_chart(fig_margen_cultivo_total, use_container_width=True)
+
+    st.subheader("Margen por ha sembrada (u$/ha)")
+    fig_margen_cultivo_ha = px.line(
+        margen_cultivo_df.sort_values("Campaña"),
+        x="Campaña",
+        y="Margen (u$/ha)",
+        color="Cultivo",
+        markers=True,
+        line_shape="spline",
+        text=margen_cultivo_df["Margen (u$/ha)"].round(0),
+        category_orders={"Campaña": campana_orden},
+    )
+    fig_margen_cultivo_ha.update_traces(
+        mode="lines+markers+text",
+        line=dict(width=3),
+        marker=dict(size=8, line=dict(width=1, color="white")),
+        texttemplate="%{text:.0f}",
+        textposition="top center",
+    )
+    fig_margen_cultivo_ha.update_layout(hovermode="x unified", legend_title_text="Cultivo")
+    add_series_averages(fig_margen_cultivo_ha)
+    st.plotly_chart(fig_margen_cultivo_ha, use_container_width=True)
+
+    with st.expander("Ver tabla de margen por actividad"):
+        st.dataframe(margen_cultivo_df.sort_values(["Campaña", "Cultivo"]), use_container_width=True)
+
+    st.caption(
+        "Margen = Ingreso total (suma de Total u\\$ en filas con c = 'P') − Costo total "
+        "(suma de Total u\\$ en filas con c = 'v'). Margen por ha = Margen / Superficie "
+        "sembrada (mismo cálculo que en la Sección 1, sin Soja 2ª, Maíz 2ª, Ganadería, "
+        "Vicia, Moha ni Sorgo Granífero)."
+    )

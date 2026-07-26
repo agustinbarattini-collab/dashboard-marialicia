@@ -244,3 +244,32 @@ def factor_ingreso(df: pd.DataFrame) -> pd.DataFrame:
         ["Rendimiento" if r >= p else "Precio" for r, p in zip(dist_rend, dist_precio)]
     )
     return resultado
+
+
+def ingreso_total(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
+    """Ingreso total (Total u$) en filas con columna c = 'P'."""
+    ingresos = df[df["c_norm"] == "P"]
+    return (
+        ingresos.groupby(["Campaña", by], as_index=False)["Total u$"]
+        .sum()
+        .rename(columns={"Total u$": "Ingreso total (u$)"})
+    )
+
+
+def margen(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
+    """Margen = Ingreso total (c='P') - Costo total (c='v'), y Margen por
+    hectarea sembrada (usando la misma superficie que area_sembrada)."""
+    ing = ingreso_total(df, by=by)
+    cos = costo_total(df, by=by)
+    sup = area_sembrada(df, by=by)[["Campaña", by, "Superficie sembrada (ha)"]]
+
+    resultado = ing.merge(cos, on=["Campaña", by], how="outer").merge(
+        sup, on=["Campaña", by], how="outer"
+    )
+    resultado["Ingreso total (u$)"] = resultado["Ingreso total (u$)"].fillna(0)
+    resultado["Costo total (u$)"] = resultado["Costo total (u$)"].fillna(0)
+    resultado["Margen (u$)"] = resultado["Ingreso total (u$)"] - resultado["Costo total (u$)"]
+
+    resultado = resultado[resultado["Superficie sembrada (ha)"] > 0]
+    resultado["Margen (u$/ha)"] = resultado["Margen (u$)"] / resultado["Superficie sembrada (ha)"]
+    return resultado
