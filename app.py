@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -66,6 +67,7 @@ seccion = st.sidebar.radio(
         "2. Costos",
         "3. Ingresos",
         "4. Resultados",
+        "5. Análisis",
     ],
 )
 
@@ -533,7 +535,7 @@ elif seccion.startswith("3"):
         "haya sido mejor o peor que lo habitual."
     )
 
-else:
+elif seccion.startswith("4"):
     st.title("Resultados")
 
     # --- Margen por campo ---
@@ -631,4 +633,95 @@ else:
         "(suma de Total u\\$ en filas con c = 'v'). Margen por ha = Margen / Superficie "
         "sembrada (mismo cálculo que en la Sección 1, sin Soja 2ª, Maíz 2ª, Ganadería, "
         "Vicia, Moha ni Sorgo Granífero)."
+    )
+
+else:
+    st.title("Análisis")
+
+    df_analisis = df_f[df_f["Campo"].isin(campos_sel) & df_f["Cultivo"].isin(cultivos_sel)]
+
+    # --- Dispersión: Resultado vs. Ingreso Neto y Costo (por ha cosechada) ---
+    st.header("Resultado vs. Ingreso Neto y Costo (por ha cosechada)")
+
+    disp_df = data.resultado_por_ha_cosechada(df_analisis, by=("Campaña", "Campo", "Cultivo"))
+
+    fig_disp = go.Figure()
+    series_colores = {"Ingreso neto (u$/ha)": "#2e7d32", "Costo (u$/ha)": "#c62828"}
+    for col, color in series_colores.items():
+        x = disp_df[col].to_numpy()
+        y = disp_df["Resultado (u$/ha)"].to_numpy()
+        fig_disp.add_trace(
+            go.Scatter(
+                x=x,
+                y=y,
+                mode="markers",
+                name=col,
+                marker=dict(color=color, size=8, opacity=0.7),
+            )
+        )
+        if len(x) > 1 and x.std() > 0:
+            pendiente, ordenada = np.polyfit(x, y, 1)
+            x_linea = np.array([x.min(), x.max()])
+            fig_disp.add_trace(
+                go.Scatter(
+                    x=x_linea,
+                    y=pendiente * x_linea + ordenada,
+                    mode="lines",
+                    name=f"Tendencia · {col}",
+                    line=dict(color=color, width=2, dash="dash"),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+
+    fig_disp.update_layout(
+        template="plotly_white",
+        xaxis_title="u$/ha",
+        yaxis_title="Resultado (u$/ha)",
+        height=550,
+        legend_title_text="Serie",
+    )
+    st.plotly_chart(fig_disp, use_container_width=True)
+
+    with st.expander("Ver tabla de resultado por ha cosechada"):
+        st.dataframe(disp_df.sort_values(["Campaña", "Campo", "Cultivo"]), use_container_width=True)
+
+    st.caption(
+        "Cada punto es una combinación Campaña + Campo + Cultivo. Ingreso Neto, Costo y "
+        "Resultado están expresados por hectárea cosechada (Sup en filas con Tipo = "
+        "Cosecha). Línea punteada = tendencia lineal (regresión simple)."
+    )
+
+    st.divider()
+
+    # --- Correlación entre gastos por Tipo y el Resultado ---
+    st.header("Correlación entre gastos por Tipo y el Resultado")
+
+    corr_df = data.correlacion_costos_resultado(df_analisis, by=("Campaña", "Campo", "Cultivo"))
+
+    if corr_df.empty:
+        st.info("No hay suficientes datos para calcular correlaciones con los filtros actuales.")
+    else:
+        def _color_corr(val: float) -> str:
+            if pd.isna(val):
+                return ""
+            intensidad = min(abs(val), 1.0)
+            canal = int(255 - intensidad * 105)
+            if val >= 0:
+                return f"background-color: rgb({canal},255,{canal}); color: black"
+            return f"background-color: rgb(255,{canal},{canal}); color: black"
+
+        styled_corr = (
+            corr_df[["Tipo", "Correlación con Resultado", "Observaciones"]]
+            .style.map(_color_corr, subset=["Correlación con Resultado"])
+            .format({"Correlación con Resultado": "{:.2f}"})
+        )
+        st.dataframe(styled_corr, use_container_width=True, hide_index=True)
+
+    st.caption(
+        "Correlación de Pearson (-1 a 1) entre el costo por ha cosechada de cada Tipo y "
+        "el Resultado por ha cosechada, sobre las combinaciones Campaña + Campo + "
+        "Cultivo disponibles. Cerca de -1: a mayor gasto de ese Tipo, peor resultado. "
+        "Cerca de +1: van de la mano (correlación no implica causalidad — puede reflejar "
+        "un efecto de escala, ej. campañas más grandes gastan y ganan más en todo)."
     )

@@ -273,3 +273,97 @@ def margen(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
     resultado = resultado[resultado["Superficie sembrada (ha)"] > 0]
     resultado["Margen (u$/ha)"] = resultado["Margen (u$)"] / resultado["Superficie sembrada (ha)"]
     return resultado
+
+
+def resultado_por_ha_cosechada(
+    df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultivo")
+) -> pd.DataFrame:
+    """Ingreso neto, Costo y Resultado (Margen), todos por hectarea
+    cosechada (Sup en filas con Tipo = Cosecha), a la granularidad `by`."""
+    by = list(by)
+    cosechada = (
+        df[df["Tipo_norm"] == "COSECHA"]
+        .groupby(by, as_index=False)["Sup"]
+        .sum()
+        .rename(columns={"Sup": "Has cosechadas"})
+    )
+    ing = (
+        df[df["c_norm"] == "P"]
+        .groupby(by, as_index=False)["Total u$"]
+        .sum()
+        .rename(columns={"Total u$": "Ingreso total (u$)"})
+    )
+    cos = (
+        df[df["c_norm"] == "V"]
+        .groupby(by, as_index=False)["Total u$"]
+        .sum()
+        .rename(columns={"Total u$": "Costo total (u$)"})
+    )
+
+    resultado = cosechada.merge(ing, on=by, how="left").merge(cos, on=by, how="left")
+    resultado["Ingreso total (u$)"] = resultado["Ingreso total (u$)"].fillna(0)
+    resultado["Costo total (u$)"] = resultado["Costo total (u$)"].fillna(0)
+    resultado = resultado[resultado["Has cosechadas"] > 0]
+
+    resultado["Ingreso neto (u$/ha)"] = resultado["Ingreso total (u$)"] / resultado["Has cosechadas"]
+    resultado["Costo (u$/ha)"] = resultado["Costo total (u$)"] / resultado["Has cosechadas"]
+    resultado["Resultado (u$/ha)"] = resultado["Ingreso neto (u$/ha)"] - resultado["Costo (u$/ha)"]
+    return resultado
+
+
+def costo_por_tipo_detalle(
+    df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultivo")
+) -> pd.DataFrame:
+    """Costo por Tipo (Total u$, c = 'v') por hectarea cosechada, a la
+    granularidad `by`."""
+    by = list(by)
+    cosechada = (
+        df[df["Tipo_norm"] == "COSECHA"]
+        .groupby(by, as_index=False)["Sup"]
+        .sum()
+        .rename(columns={"Sup": "Has cosechadas"})
+    )
+    costo_tipo = (
+        df[df["c_norm"] == "V"]
+        .groupby(by + ["Tipo_display"], as_index=False)["Total u$"]
+        .sum()
+        .rename(columns={"Total u$": "Costo total (u$)", "Tipo_display": "Tipo"})
+    )
+
+    resultado = costo_tipo.merge(cosechada, on=by)
+    resultado = resultado[resultado["Has cosechadas"] > 0]
+    resultado["Costo por ha cosechada (u$/ha)"] = (
+        resultado["Costo total (u$)"] / resultado["Has cosechadas"]
+    )
+    return resultado
+
+
+def correlacion_costos_resultado(
+    df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultivo")
+) -> pd.DataFrame:
+    """Correlacion (Pearson) entre el costo por ha cosechada de cada Tipo
+    y el Resultado por ha cosechada, a traves de las observaciones (una
+    por cada combinacion de `by`)."""
+    by = list(by)
+    resultado = resultado_por_ha_cosechada(df, by=by)[by + ["Resultado (u$/ha)"]]
+    costo_detalle = costo_por_tipo_detalle(df, by=by)
+
+    pivot = costo_detalle.pivot_table(
+        index=by, columns="Tipo", values="Costo por ha cosechada (u$/ha)", fill_value=0
+    ).reset_index()
+
+    merged = pivot.merge(resultado, on=by, how="inner")
+    tipos = [c for c in pivot.columns if c not in by]
+
+    filas = []
+    for tipo in tipos:
+        if merged[tipo].std() > 0 and merged["Resultado (u$/ha)"].std() > 0:
+            corr = merged[tipo].corr(merged["Resultado (u$/ha)"])
+            filas.append({"Tipo": tipo, "Correlación con Resultado": corr, "Observaciones": len(merged)})
+
+    corr_df = pd.DataFrame(filas)
+    if corr_df.empty:
+        return corr_df
+    return corr_df.reindex(
+        corr_df["Correlación con Resultado"].abs().sort_values(ascending=False).index
+    )
