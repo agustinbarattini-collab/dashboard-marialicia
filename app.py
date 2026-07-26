@@ -711,17 +711,99 @@ else:
                 return f"background-color: rgb({canal},255,{canal}); color: black"
             return f"background-color: rgb(255,{canal},{canal}); color: black"
 
+        columnas = [
+            "Tipo",
+            "Correlación con Resultado",
+            "Retorno marginal (Resultado)",
+            "Correlación con Rendimiento",
+            "Retorno marginal (Rendimiento)",
+            "Observaciones",
+        ]
+        columnas_presentes = [c for c in columnas if c in corr_df.columns]
+        corr_col_corr = [c for c in ["Correlación con Resultado", "Correlación con Rendimiento"] if c in corr_df.columns]
+
         styled_corr = (
-            corr_df[["Tipo", "Correlación con Resultado", "Observaciones"]]
-            .style.map(_color_corr, subset=["Correlación con Resultado"])
-            .format({"Correlación con Resultado": "{:.2f}"})
+            corr_df[columnas_presentes]
+            .style.map(_color_corr, subset=corr_col_corr)
+            .format(
+                {
+                    "Correlación con Resultado": "{:.2f}",
+                    "Correlación con Rendimiento": "{:.2f}",
+                    "Retorno marginal (Resultado)": "{:.2f}",
+                    "Retorno marginal (Rendimiento)": "{:.4f}",
+                },
+                na_rep="—",
+            )
         )
         st.dataframe(styled_corr, use_container_width=True, hide_index=True)
 
     st.caption(
         "Correlación de Pearson (-1 a 1) entre el costo por ha cosechada de cada Tipo y "
-        "el Resultado por ha cosechada, sobre las combinaciones Campaña + Campo + "
-        "Cultivo disponibles. Cerca de -1: a mayor gasto de ese Tipo, peor resultado. "
-        "Cerca de +1: van de la mano (correlación no implica causalidad — puede reflejar "
-        "un efecto de escala, ej. campañas más grandes gastan y ganan más en todo)."
+        "el Resultado (u\\$/ha) o el Rendimiento (t/ha), sobre las combinaciones "
+        "Campaña + Campo + Cultivo disponibles. \"Retorno marginal\" = por cada u\\$/ha "
+        "adicional gastado en ese Tipo, cuánto cambia en promedio el Resultado (en u\\$) "
+        "o el Rendimiento (en t/ha) — es la pendiente de una regresión lineal simple. "
+        "Correlación no implica causalidad: puede reflejar un efecto de escala (campañas "
+        "más grandes gastan y producen más en todo)."
+    )
+
+    st.divider()
+
+    # --- Rinde y precio de indiferencia ---
+    st.header("Rinde y precio de indiferencia")
+
+    indif_df = data.indiferencia(df_analisis, by=("Campaña", "Campo", "Cultivo"))
+
+    def _color_margen_seguridad(val: float) -> str:
+        if pd.isna(val):
+            return ""
+        if val > 15:
+            return "background-color: #1b5e20; color: white"
+        if val >= 0:
+            return "background-color: #a5d6a7; color: black"
+        if val >= -15:
+            return "background-color: #fff59d; color: black"
+        return "background-color: #ef5350; color: white"
+
+    columnas_indif = [
+        "Campaña",
+        "Campo",
+        "Cultivo",
+        "Rendimiento (t/ha)",
+        "Rinde de indiferencia (t/ha)",
+        "Margen de seguridad rinde (%)",
+        "Precio de venta (u$/t)",
+        "Precio de indiferencia (u$/t)",
+        "Margen de seguridad precio (%)",
+    ]
+    columnas_indif_presentes = [c for c in columnas_indif if c in indif_df.columns]
+
+    styled_indif = (
+        indif_df[columnas_indif_presentes]
+        .sort_values(["Campaña", "Campo", "Cultivo"])
+        .style.map(
+            _color_margen_seguridad,
+            subset=["Margen de seguridad rinde (%)", "Margen de seguridad precio (%)"],
+        )
+        .format(
+            {
+                "Rendimiento (t/ha)": "{:.2f}",
+                "Rinde de indiferencia (t/ha)": "{:.2f}",
+                "Margen de seguridad rinde (%)": "{:.0f}%",
+                "Precio de venta (u$/t)": "{:.0f}",
+                "Precio de indiferencia (u$/t)": "{:.0f}",
+                "Margen de seguridad precio (%)": "{:.0f}%",
+            },
+            na_rep="—",
+        )
+    )
+    st.dataframe(styled_indif, use_container_width=True, hide_index=True)
+
+    st.caption(
+        "Rinde de indiferencia = Costo (u\\$/ha) / Precio de venta real (u\\$/t): el "
+        "rendimiento mínimo con el que el Resultado hubiera sido 0, al precio que "
+        "realmente se vendió. Precio de indiferencia = Costo (u\\$/ha) / Rendimiento "
+        "real (t/ha): el precio mínimo necesario, al rendimiento que realmente se "
+        "obtuvo. \"Margen de seguridad\" = qué tan lejos estuvo el valor real del punto "
+        "de indiferencia (negativo = esa campaña dio pérdida)."
     )

@@ -1,4 +1,5 @@
 import gspread
+import numpy as np
 import pandas as pd
 import streamlit as st
 from google.oauth2.service_account import Credentials
@@ -341,25 +342,44 @@ def costo_por_tipo_detalle(
 def correlacion_costos_resultado(
     df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultivo")
 ) -> pd.DataFrame:
-    """Correlacion (Pearson) entre el costo por ha cosechada de cada Tipo
-    y el Resultado por ha cosechada, a traves de las observaciones (una
-    por cada combinacion de `by`)."""
+    """Para cada Tipo de gasto (costo por ha cosechada), calcula la
+    correlacion (Pearson) y el retorno marginal (pendiente de una
+    regresion lineal simple) contra el Resultado (u$/ha) y contra el
+    Rendimiento (t/ha), a traves de las observaciones (una por cada
+    combinacion de `by`)."""
     by = list(by)
     resultado = resultado_por_ha_cosechada(df, by=by)[by + ["Resultado (u$/ha)"]]
+    rinde = rendimiento(df, by=by)[by + ["Rendimiento (t/ha)"]]
     costo_detalle = costo_por_tipo_detalle(df, by=by)
 
     pivot = costo_detalle.pivot_table(
         index=by, columns="Tipo", values="Costo por ha cosechada (u$/ha)", fill_value=0
     ).reset_index()
 
-    merged = pivot.merge(resultado, on=by, how="inner")
+    merged = pivot.merge(resultado, on=by, how="inner").merge(rinde, on=by, how="inner")
     tipos = [c for c in pivot.columns if c not in by]
+
+    objetivos = [
+        ("Resultado (u$/ha)", "Resultado"),
+        ("Rendimiento (t/ha)", "Rendimiento"),
+    ]
 
     filas = []
     for tipo in tipos:
-        if merged[tipo].std() > 0 and merged["Resultado (u$/ha)"].std() > 0:
-            corr = merged[tipo].corr(merged["Resultado (u$/ha)"])
-            filas.append({"Tipo": tipo, "Correlación con Resultado": corr, "Observaciones": len(merged)})
+        x = merged[tipo]
+        if x.std() == 0:
+            continue
+        fila = {"Tipo": tipo, "Observaciones": len(merged)}
+        valido = False
+        for col_objetivo, etiqueta in objetivos:
+            y = merged[col_objetivo]
+            if y.std() == 0:
+                continue
+            fila[f"Correlación con {etiqueta}"] = x.corr(y)
+            fila[f"Retorno marginal ({etiqueta})"] = np.polyfit(x, y, 1)[0]
+            valido = True
+        if valido:
+            filas.append(fila)
 
     corr_df = pd.DataFrame(filas)
     if corr_df.empty:
@@ -367,3 +387,37 @@ def correlacion_costos_resultado(
     return corr_df.reindex(
         corr_df["Correlación con Resultado"].abs().sort_values(ascending=False).index
     )
+
+
+def indiferencia(df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultivo")) -> pd.DataFrame:
+    """Rinde y precio de indiferencia (los que harian Resultado = 0),
+    manteniendo fijo el otro factor en su valor real observado, a la
+    granularidad `by`."""
+    by = list(by)
+    resultado = resultado_por_ha_cosechada(df, by=by)
+    rinde = rendimiento(df, by=by)[by + ["Rendimiento (t/ha)"]]
+    precio = precio_venta(df, by=by)[by + ["Precio de venta (u$/t)"]]
+
+    merged = resultado.merge(rinde, on=by, how="left").merge(precio, on=by, how="left")
+
+    con_precio = merged["Precio de venta (u$/t)"] > 0
+    merged.loc[con_precio, "Rinde de indiferencia (t/ha)"] = (
+        merged.loc[con_precio, "Costo (u$/ha)"] / merged.loc[con_precio, "Precio de venta (u$/t)"]
+    )
+
+    con_rinde = merged["Rendimiento (t/ha)"] > 0
+    merged.loc[con_rinde, "Precio de indiferencia (u$/t)"] = (
+        merged.loc[con_rinde, "Costo (u$/ha)"] / merged.loc[con_rinde, "Rendimiento (t/ha)"]
+    )
+
+    merged["Margen de seguridad rinde (%)"] = (
+        (merged["Rendimiento (t/ha)"] - merged["Rinde de indiferencia (t/ha)"])
+        / merged["Rendimiento (t/ha)"]
+        * 100
+    )
+    merged["Margen de seguridad precio (%)"] = (
+        (merged["Precio de venta (u$/t)"] - merged["Precio de indiferencia (u$/t)"])
+        / merged["Precio de venta (u$/t)"]
+        * 100
+    )
+    return merged
