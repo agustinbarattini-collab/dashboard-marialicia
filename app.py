@@ -28,6 +28,7 @@ def add_series_averages(fig: go.Figure) -> go.Figure:
                 xaxis=trace.xaxis,
                 yaxis=trace.yaxis,
                 showlegend=False,
+                legendgroup=trace.legendgroup,
                 hovertemplate=f"Promedio {trace.name}: {avg:.2f}<extra></extra>",
             )
         )
