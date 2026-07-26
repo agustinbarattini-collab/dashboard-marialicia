@@ -33,6 +33,10 @@ def add_series_averages(fig: go.Figure) -> go.Figure:
             )
         )
     fig.add_traces(extra_traces)
+    # Sin esto, el click en la leyenda solo oculta la traza clickeada y no
+    # arrastra a su linea de promedio (que comparte legendgroup pero no
+    # tiene entrada propia en la leyenda).
+    fig.update_layout(legend=dict(groupclick="togglegroup"))
     return fig
 
 
