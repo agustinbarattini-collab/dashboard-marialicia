@@ -772,8 +772,11 @@ else:
         "Rendimiento (t/ha)",
         "Rinde de indiferencia (t/ha)",
         "Margen de seguridad rinde (%)",
-        "Precio de venta (u$/t)",
-        "Precio de indiferencia (u$/t)",
+        "Precio de venta Bruto (u$/t)",
+        "Flete (u$/t)",
+        "Precio de venta Neto (u$/t)",
+        "Precio de indiferencia Bruto (u$/t)",
+        "Precio de indiferencia Neto (u$/t)",
         "Margen de seguridad precio (%)",
     ]
     columnas_indif_presentes = [c for c in columnas_indif if c in indif_df.columns]
@@ -790,8 +793,11 @@ else:
                 "Rendimiento (t/ha)": "{:.2f}",
                 "Rinde de indiferencia (t/ha)": "{:.2f}",
                 "Margen de seguridad rinde (%)": "{:.0f}%",
-                "Precio de venta (u$/t)": "{:.0f}",
-                "Precio de indiferencia (u$/t)": "{:.0f}",
+                "Precio de venta Bruto (u$/t)": "{:.0f}",
+                "Flete (u$/t)": "{:.0f}",
+                "Precio de venta Neto (u$/t)": "{:.0f}",
+                "Precio de indiferencia Bruto (u$/t)": "{:.0f}",
+                "Precio de indiferencia Neto (u$/t)": "{:.0f}",
                 "Margen de seguridad precio (%)": "{:.0f}%",
             },
             na_rep="—",
@@ -800,10 +806,12 @@ else:
     st.dataframe(styled_indif, use_container_width=True, hide_index=True)
 
     st.caption(
-        "Rinde de indiferencia = Costo (u\\$/ha) / Precio de venta real (u\\$/t): el "
-        "rendimiento mínimo con el que el Resultado hubiera sido 0, al precio que "
-        "realmente se vendió. Precio de indiferencia = Costo (u\\$/ha) / Rendimiento "
-        "real (t/ha): el precio mínimo necesario, al rendimiento que realmente se "
-        "obtuvo. \"Margen de seguridad\" = qué tan lejos estuvo el valor real del punto "
-        "de indiferencia (negativo = esa campaña dio pérdida)."
+        "Rinde de indiferencia = Costo (u\\$/ha) / Precio de venta Neto (u\\$/t): el "
+        "rendimiento mínimo con el que el Resultado hubiera sido 0, al precio neto "
+        "(descontado el Flete) al que realmente se vendió. Precio de indiferencia Neto = "
+        "Costo (u\\$/ha) / Rendimiento real (t/ha): el precio neto mínimo necesario. "
+        "Precio de indiferencia Bruto = Precio de indiferencia Neto + Flete: el precio "
+        "de lista que haría falta antes de descontar el flete. \"Margen de seguridad\" = "
+        "qué tan lejos estuvo el valor real (neto) del punto de indiferencia (negativo = "
+        "esa campaña dio pérdida)."
     )

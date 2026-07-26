@@ -212,6 +212,27 @@ def precio_venta(df: pd.DataFrame, by: list[str] = ("Campaña", "Cultivo")) -> p
     return grouped.drop(columns=["_sum_precio_pond", "_sum_dosis"])
 
 
+def flete_por_tn(df: pd.DataFrame, by: list[str] = ("Campaña", "Cultivo")) -> pd.DataFrame:
+    """Flete por tonelada, ponderado por toneladas, en filas de Flete
+    (c = 'P', Prod_labor = Flete). En estas filas Dosis siempre vale 1
+    (es un flag) y las toneladas reales estan en Sup (en negativo);
+    Prec_Unitario ya viene expresado en u$/tonelada."""
+    es_flete = df["Prod_labor"].str.lower().str.contains("flete", regex=False)
+    base = df[
+        (df["c_norm"] == "P") & es_flete & df["Prec_Unitario"].notna() & df["Sup"].notna()
+    ].copy()
+    base["_toneladas"] = base["Sup"].abs()
+    base = base[base["_toneladas"] > 0]
+    base["_flete_pond"] = base["Prec_Unitario"] * base["_toneladas"]
+
+    grouped = base.groupby(list(by), as_index=False).agg(
+        _sum_flete_pond=("_flete_pond", "sum"),
+        _sum_toneladas=("_toneladas", "sum"),
+    )
+    grouped["Flete (u$/t)"] = grouped["_sum_flete_pond"] / grouped["_sum_toneladas"]
+    return grouped.drop(columns=["_sum_flete_pond", "_sum_toneladas"])
+
+
 def precio_semaforo(df: pd.DataFrame) -> pd.DataFrame:
     """Precio de venta de cada campaña vs. el promedio historico ponderado
     del mismo cultivo (todas las campañas), como indice (%)."""
@@ -392,22 +413,37 @@ def correlacion_costos_resultado(
 def indiferencia(df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultivo")) -> pd.DataFrame:
     """Rinde y precio de indiferencia (los que harian Resultado = 0),
     manteniendo fijo el otro factor en su valor real observado, a la
-    granularidad `by`."""
+    granularidad `by`. El precio se usa neto de Flete (el bruto sobre-
+    estima lo que realmente se cobra por tonelada)."""
     by = list(by)
     resultado = resultado_por_ha_cosechada(df, by=by)
     rinde = rendimiento(df, by=by)[by + ["Rendimiento (t/ha)"]]
-    precio = precio_venta(df, by=by)[by + ["Precio de venta (u$/t)"]]
+    precio = precio_venta(df, by=by)[by + ["Precio de venta (u$/t)"]].rename(
+        columns={"Precio de venta (u$/t)": "Precio de venta Bruto (u$/t)"}
+    )
+    flete = flete_por_tn(df, by=by)
 
-    merged = resultado.merge(rinde, on=by, how="left").merge(precio, on=by, how="left")
+    merged = (
+        resultado.merge(rinde, on=by, how="left")
+        .merge(precio, on=by, how="left")
+        .merge(flete, on=by, how="left")
+    )
+    merged["Flete (u$/t)"] = merged["Flete (u$/t)"].fillna(0)
+    merged["Precio de venta Neto (u$/t)"] = (
+        merged["Precio de venta Bruto (u$/t)"] - merged["Flete (u$/t)"]
+    )
 
-    con_precio = merged["Precio de venta (u$/t)"] > 0
+    con_precio = merged["Precio de venta Neto (u$/t)"] > 0
     merged.loc[con_precio, "Rinde de indiferencia (t/ha)"] = (
-        merged.loc[con_precio, "Costo (u$/ha)"] / merged.loc[con_precio, "Precio de venta (u$/t)"]
+        merged.loc[con_precio, "Costo (u$/ha)"] / merged.loc[con_precio, "Precio de venta Neto (u$/t)"]
     )
 
     con_rinde = merged["Rendimiento (t/ha)"] > 0
-    merged.loc[con_rinde, "Precio de indiferencia (u$/t)"] = (
+    merged.loc[con_rinde, "Precio de indiferencia Neto (u$/t)"] = (
         merged.loc[con_rinde, "Costo (u$/ha)"] / merged.loc[con_rinde, "Rendimiento (t/ha)"]
+    )
+    merged["Precio de indiferencia Bruto (u$/t)"] = (
+        merged["Precio de indiferencia Neto (u$/t)"] + merged["Flete (u$/t)"]
     )
 
     merged["Margen de seguridad rinde (%)"] = (
@@ -416,8 +452,8 @@ def indiferencia(df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultiv
         * 100
     )
     merged["Margen de seguridad precio (%)"] = (
-        (merged["Precio de venta (u$/t)"] - merged["Precio de indiferencia (u$/t)"])
-        / merged["Precio de venta (u$/t)"]
+        (merged["Precio de venta Neto (u$/t)"] - merged["Precio de indiferencia Neto (u$/t)"])
+        / merged["Precio de venta Neto (u$/t)"]
         * 100
     )
     return merged
