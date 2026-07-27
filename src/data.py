@@ -60,6 +60,7 @@ def load_base_df() -> pd.DataFrame:
     df["Prod_labor"] = df["Prod_labor"].astype(str).str.strip()
     df["Activ_norm"] = df["Activ"].astype(str).str.strip().str.upper()
     df["Cultivo"] = df["Activ_norm"].map(ACTIV_MAP).fillna(df["Activ_norm"])
+    df["Accion_norm"] = df["Accion"].astype(str).str.strip().str.upper()
 
     df["Sup"] = pd.to_numeric(df["Sup"], errors="coerce")
     df["Dosis"] = pd.to_numeric(df["Dosis"], errors="coerce")
@@ -77,8 +78,13 @@ CULTIVOS_EXCLUIDOS_AREA = {"S2DA", "M 2DA", "GAN", "VI", "MOHA", "SG"}
 
 
 def area_sembrada(df: pd.DataFrame, by: str = "Campo") -> pd.DataFrame:
+    # Ademas de Tipo = Siembra, se exige Accion = Siembra: hay filas con
+    # Tipo = Siembra pero Accion de otra labor (ej. "Labor"/Rolo picador)
+    # mal etiquetadas, que duplicarian la superficie si no se filtran.
     siembra = df[
-        (df["Tipo_norm"] == "SIEMBRA") & (~df["Activ_norm"].isin(CULTIVOS_EXCLUIDOS_AREA))
+        (df["Tipo_norm"] == "SIEMBRA")
+        & (df["Accion_norm"] == "SIEMBRA")
+        & (~df["Activ_norm"].isin(CULTIVOS_EXCLUIDOS_AREA))
     ]
     return (
         siembra.groupby(["Campaña", by], as_index=False)["Sup"]

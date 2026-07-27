@@ -121,7 +121,7 @@ if seccion.startswith("1"):
 
     # --- Área sembrada por cultivo ---
     st.header("Evolución de área sembrada por cultivo")
-    area_cultivo_df = data.area_sembrada(df_f, by="Cultivo")
+    area_cultivo_df = data.area_sembrada(df_f[df_f["Campo"].isin(campos_sel)], by="Cultivo")
     area_cultivo_df = area_cultivo_df[area_cultivo_df["Cultivo"].isin(cultivos_sel)]
 
     fig_area_cultivo = px.bar(
