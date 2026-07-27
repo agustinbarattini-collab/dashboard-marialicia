@@ -463,3 +463,144 @@ def indiferencia(df: pd.DataFrame, by: list[str] = ("Campaña", "Campo", "Cultiv
         * 100
     )
     return merged
+
+
+# Orden de las filas fijas en la tabla de analisis por lote (los Tipos de
+# gasto, que varian segun los datos, se insertan ordenados alfabeticamente
+# entre ORDEN_INGRESO_NETO y ORDEN_GASTOS_TOTALES).
+ORDEN_HAS = 0
+ORDEN_INGRESO = {"Flete": 1, "GRANOS": 2, "SEGURO": 3}
+ORDEN_INGRESO_NETO = 10
+ORDEN_GASTOS_TOTALES = 900
+ORDEN_MARGEN_NETO = 901
+ORDEN_RENTABILIDAD = 902
+ORDEN_RENDIMIENTO = 903
+ORDEN_RINDE_INDIFERENCIA = 904
+ORDEN_PRECIO_INDIFERENCIA = 905
+
+
+def lote_tabla(df: pd.DataFrame, by: list[str] = ("Campo", "Cultivo")) -> pd.DataFrame:
+    """Tabla de analisis por lote: Has cosechadas, desglose de Ingreso
+    (Flete / GRANOS / SEGURO, segun Prod_labor) y de Gastos (por Tipo,
+    sin unificar categorias), Ingreso Neto, Gastos totales, Margen Neto,
+    Rentabilidad, Rendimiento y Rinde/Precio de indiferencia — todo por
+    hectarea cosechada, a la granularidad `by` (debe incluir "Campo")."""
+    by = list(by)
+
+    has = (
+        df[df["Tipo_norm"] == "COSECHA"]
+        .groupby(by, as_index=False)["Sup"]
+        .sum()
+        .rename(columns={"Sup": "Has"})
+    )
+    has = has[has["Has"] > 0]
+    if has.empty:
+        return pd.DataFrame(columns=by + ["Métrica", "Etiqueta", "Valor", "Orden"])
+
+    # --- Ingreso (c='P'), clasificado por Prod_labor en Flete/GRANOS/SEGURO ---
+    ingresos = df[df["c_norm"] == "P"].copy()
+    prod_lower = ingresos["Prod_labor"].str.lower()
+    ingresos["Etiqueta"] = "GRANOS"
+    ingresos.loc[prod_lower.str.contains("flete", na=False), "Etiqueta"] = "Flete"
+    ingresos.loc[prod_lower.str.contains("seguro", na=False), "Etiqueta"] = "SEGURO"
+
+    ingreso_tipo = (
+        ingresos.groupby(by + ["Etiqueta"], as_index=False)["Total u$"]
+        .sum()
+        .rename(columns={"Total u$": "_total"})
+    )
+    # "Métrica" es la clave unica usada para pivotear (evita colisionar con
+    # el Tipo de gasto "SEGURO", que es un concepto distinto).
+    ingreso_tipo["Métrica"] = "ingreso:" + ingreso_tipo["Etiqueta"]
+    ingreso_tipo["Orden"] = ingreso_tipo["Etiqueta"].map(ORDEN_INGRESO)
+
+    # --- Gastos (c='v'), por Tipo crudo (sin unificar) ---
+    gastos = df[df["c_norm"] == "V"]
+    gasto_tipo = (
+        gastos.groupby(by + ["Tipo_norm"], as_index=False)["Total u$"]
+        .sum()
+        .rename(columns={"Tipo_norm": "Etiqueta", "Total u$": "_total"})
+    )
+    gasto_tipo["Métrica"] = "gasto:" + gasto_tipo["Etiqueta"]
+    tipos_gasto_orden = {t: 20 + i for i, t in enumerate(sorted(gasto_tipo["Etiqueta"].unique()))}
+    gasto_tipo["Orden"] = gasto_tipo["Etiqueta"].map(tipos_gasto_orden)
+
+    detalle = pd.concat([ingreso_tipo, gasto_tipo], ignore_index=True)
+    detalle = detalle.merge(has, on=by, how="inner")
+    detalle["Valor"] = detalle["_total"] / detalle["Has"]
+
+    # --- Totales por seccion ---
+    ingreso_neto = ingreso_tipo.groupby(by, as_index=False)["_total"].sum().merge(has, on=by)
+    ingreso_neto["Valor"] = ingreso_neto["_total"] / ingreso_neto["Has"]
+    ingreso_neto["Métrica"] = "Ingreso Neto"
+    ingreso_neto["Etiqueta"] = "Ingreso Neto"
+    ingreso_neto["Orden"] = ORDEN_INGRESO_NETO
+
+    gastos_totales = gasto_tipo.groupby(by, as_index=False)["_total"].sum().merge(has, on=by)
+    gastos_totales["Valor"] = gastos_totales["_total"] / gastos_totales["Has"]
+    gastos_totales["Métrica"] = "Gastos totales"
+    gastos_totales["Etiqueta"] = "Gastos totales"
+    gastos_totales["Orden"] = ORDEN_GASTOS_TOTALES
+
+    margen_neto = ingreso_neto[by + ["Valor"]].rename(columns={"Valor": "_ing"}).merge(
+        gastos_totales[by + ["Valor"]].rename(columns={"Valor": "_cos"}), on=by
+    )
+    margen_neto["Valor"] = margen_neto["_ing"] - margen_neto["_cos"]
+    margen_neto["Métrica"] = "Margen Neto"
+    margen_neto["Etiqueta"] = "Margen Neto"
+    margen_neto["Orden"] = ORDEN_MARGEN_NETO
+
+    rentabilidad = margen_neto[by + ["Valor"]].rename(columns={"Valor": "_margen"}).merge(
+        ingreso_neto[by + ["Valor"]].rename(columns={"Valor": "_ing"}), on=by
+    )
+    rentabilidad["Valor"] = (rentabilidad["_margen"] / rentabilidad["_ing"] * 100).where(
+        rentabilidad["_ing"] != 0
+    )
+    rentabilidad["Métrica"] = "Rentabilidad (%)"
+    rentabilidad["Etiqueta"] = "Rentabilidad (%)"
+    rentabilidad["Orden"] = ORDEN_RENTABILIDAD
+
+    # --- Rendimiento y rinde/precio de indiferencia ---
+    rend = rendimiento(df, by=by)[by + ["Rendimiento (t/ha)"]].rename(
+        columns={"Rendimiento (t/ha)": "Valor"}
+    )
+    rend["Métrica"] = "Rendimiento Presupuestado (t/ha)"
+    rend["Etiqueta"] = "Rendimiento Presupuestado (t/ha)"
+    rend["Orden"] = ORDEN_RENDIMIENTO
+
+    indif = indiferencia(df, by=by)
+    rinde_indif = indif[by + ["Rinde de indiferencia (t/ha)"]].rename(
+        columns={"Rinde de indiferencia (t/ha)": "Valor"}
+    )
+    rinde_indif["Métrica"] = "Rinde indiferencia (t/ha)"
+    rinde_indif["Etiqueta"] = "Rinde indiferencia (t/ha)"
+    rinde_indif["Orden"] = ORDEN_RINDE_INDIFERENCIA
+
+    precio_indif = indif[by + ["Precio de indiferencia Neto (u$/t)"]].rename(
+        columns={"Precio de indiferencia Neto (u$/t)": "Valor"}
+    )
+    precio_indif["Métrica"] = "Precio Neto Indiferencia (u$/t)"
+    precio_indif["Etiqueta"] = "Precio Neto Indiferencia (u$/t)"
+    precio_indif["Orden"] = ORDEN_PRECIO_INDIFERENCIA
+
+    filas_has = has.rename(columns={"Has": "Valor"}).copy()
+    filas_has["Métrica"] = "Has"
+    filas_has["Etiqueta"] = "Has"
+    filas_has["Orden"] = ORDEN_HAS
+
+    cols = by + ["Métrica", "Etiqueta", "Orden", "Valor"]
+    resultado = pd.concat(
+        [
+            filas_has[cols],
+            detalle[cols],
+            ingreso_neto[cols],
+            gastos_totales[cols],
+            margen_neto[cols],
+            rentabilidad[cols],
+            rend[cols],
+            rinde_indif[cols],
+            precio_indif[cols],
+        ],
+        ignore_index=True,
+    )
+    return resultado

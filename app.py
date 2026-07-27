@@ -68,6 +68,7 @@ seccion = st.sidebar.radio(
         "3. Ingresos",
         "4. Resultados",
         "5. Análisis",
+        "6. Análisis por lote",
     ],
 )
 
@@ -635,7 +636,7 @@ elif seccion.startswith("4"):
         "Vicia, Moha ni Sorgo Granífero)."
     )
 
-else:
+elif seccion.startswith("5"):
     st.title("Análisis")
 
     df_analisis = df_f[df_f["Campo"].isin(campos_sel) & df_f["Cultivo"].isin(cultivos_sel)]
@@ -814,4 +815,111 @@ else:
         "de lista que haría falta antes de descontar el flete. \"Margen de seguridad\" = "
         "qué tan lejos estuvo el valor real (neto) del punto de indiferencia (negativo = "
         "esa campaña dio pérdida)."
+    )
+
+else:
+    st.title("Análisis por lote")
+
+    if len(campanas_sel) != 1:
+        st.info(
+            "Elegí una sola Campaña en el filtro de la izquierda para un análisis por "
+            "lote más claro. Con varias campañas seleccionadas, los valores se suman "
+            "entre campañas."
+        )
+
+    df_lote = df_f[df_f["Campo"].isin(campos_sel) & df_f["Cultivo"].isin(cultivos_sel)]
+
+    lote_df = data.lote_tabla(df_lote, by=["Campo", "Cultivo"])
+    lote_total_df = data.lote_tabla(
+        df_f[df_f["Campo"].isin(campos_sel) & df_f["Cultivo"].isin(cultivos_sel)], by=["Campo"]
+    )
+    lote_total_df["Cultivo"] = "Total"
+
+    if lote_df.empty and lote_total_df.empty:
+        st.info("No hay datos de cosecha para los filtros actuales.")
+    else:
+        combinado = pd.concat([lote_df, lote_total_df], ignore_index=True)
+
+        metricas_orden = (
+            combinado[["Métrica", "Etiqueta", "Orden"]]
+            .drop_duplicates()
+            .sort_values("Orden")[["Métrica", "Etiqueta"]]
+            .itertuples(index=False, name=None)
+        )
+        metricas_orden = list(metricas_orden)
+
+        campos_presentes = [c for c in campos_sel if c in combinado["Campo"].unique()]
+        col_order = []
+        for campo in campos_presentes:
+            cultivos_de_campo = sorted(
+                lote_df.loc[lote_df["Campo"] == campo, "Cultivo"].unique()
+            )
+            for cultivo in cultivos_de_campo:
+                col_order.append((campo, cultivo))
+            col_order.append((campo, "Total"))
+
+        pivot = combinado.pivot_table(
+            index="Métrica", columns=["Campo", "Cultivo"], values="Valor", aggfunc="first"
+        )
+        metrica_keys = [m for m, _ in metricas_orden]
+        pivot = pivot.reindex(index=metrica_keys, columns=pd.MultiIndex.from_tuples(col_order))
+
+        filas_resaltadas = {"Has", "Ingreso Neto", "Gastos totales", "Margen Neto", "Rentabilidad (%)"}
+
+        def _formato_valor(etiqueta: str, val: float) -> str:
+            if pd.isna(val):
+                return "—"
+            if etiqueta == "Rentabilidad (%)":
+                return f"{val:.1f}%"
+            if etiqueta in ("Rendimiento Presupuestado (t/ha)", "Rinde indiferencia (t/ha)"):
+                return f"{val:,.2f}"
+            return f"{val:,.0f}"
+
+        html = ["<div style='overflow-x:auto'>"]
+        html.append(
+            "<style>"
+            ".lote-tabla{border-collapse:collapse;font-size:0.85rem;white-space:nowrap;}"
+            ".lote-tabla th,.lote-tabla td{border:1px solid #d0d7de;padding:4px 8px;text-align:right;}"
+            ".lote-tabla th{background:#eef3ee;text-align:center;}"
+            ".lote-tabla td:first-child,.lote-tabla th:first-child{text-align:left;position:sticky;left:0;background:#fff;}"
+            ".lote-tabla th:first-child{background:#eef3ee;}"
+            ".lote-tabla tr.total-col td:last-child{font-weight:600;}"
+            ".lote-tabla tr.resaltada td,.lote-tabla tr.resaltada td:first-child{background:#d9ead3;font-weight:600;}"
+            ".lote-tabla td.total-cell{font-weight:600;background:#f3f7f2;}"
+            "</style>"
+        )
+        html.append("<table class='lote-tabla'>")
+
+        # Header fila 1: Campo (colspan = cultivos + total)
+        html.append("<tr><th></th>")
+        for campo in campos_presentes:
+            span = len([c for c in col_order if c[0] == campo])
+            html.append(f"<th colspan='{span}'>{campo}</th>")
+        html.append("</tr>")
+
+        # Header fila 2: Cultivo / Total
+        html.append("<tr><th>Métrica</th>")
+        for _, cultivo in col_order:
+            html.append(f"<th>{cultivo}</th>")
+        html.append("</tr>")
+
+        for metrica, etiqueta in metricas_orden:
+            row_class = "resaltada" if etiqueta in filas_resaltadas else ""
+            html.append(f"<tr class='{row_class}'><td>{etiqueta}</td>")
+            for campo, cultivo in col_order:
+                val = pivot.loc[metrica, (campo, cultivo)] if (campo, cultivo) in pivot.columns else None
+                celda_class = "total-cell" if cultivo == "Total" else ""
+                html.append(f"<td class='{celda_class}'>{_formato_valor(etiqueta, val)}</td>")
+            html.append("</tr>")
+
+        html.append("</table></div>")
+        st.markdown("".join(html), unsafe_allow_html=True)
+
+    st.caption(
+        "Todos los valores (salvo Has, Rentabilidad, Rendimiento y Rinde/Precio de "
+        "indiferencia) están en u\\$/ha cosechada. Ingreso Neto = Flete + GRANOS + SEGURO "
+        "(filas con c = 'P', clasificadas por Prod_labor). Gastos totales = suma de "
+        "Total u\\$ por Tipo (filas con c = 'v', sin unificar categorías). Margen Neto = "
+        "Ingreso Neto − Gastos totales. Rentabilidad = Margen Neto / Ingreso Neto. La "
+        "columna \"Total\" de cada Campo agrega todos sus cultivos."
     )
