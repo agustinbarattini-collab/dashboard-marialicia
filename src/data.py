@@ -479,20 +479,28 @@ ORDEN_RINDE_INDIFERENCIA = 904
 ORDEN_PRECIO_INDIFERENCIA = 905
 
 
-def lote_tabla(df: pd.DataFrame, by: list[str] = ("Campo", "Cultivo")) -> pd.DataFrame:
+def lote_tabla(
+    df: pd.DataFrame, by: list[str] = ("Campo", "Cultivo"), has_excluye_solapados: bool = False
+) -> pd.DataFrame:
     """Tabla de analisis por lote: Has cosechadas, desglose de Ingreso
     (Flete / GRANOS / SEGURO, segun Prod_labor) y de Gastos (por Tipo,
     sin unificar categorias), Ingreso Neto, Gastos totales, Margen Neto,
     Rentabilidad, Rendimiento y Rinde/Precio de indiferencia — todo por
-    hectarea cosechada, a la granularidad `by` (debe incluir "Campo")."""
+    hectarea cosechada, a la granularidad `by` (debe incluir "Campo").
+
+    Si `has_excluye_solapados` es True (usar cuando `by` no incluye
+    Cultivo, ej. la columna "Total" de un Campo), las Has de cultivos de
+    2da (Soja 2da, Maiz 2da, etc.) se excluyen del calculo de Has: esos
+    cultivos se siembran sobre la misma superficie fisica que el cultivo
+    de 1ra, y sumarlas duplicaria la superficie. El Ingreso y el Gasto de
+    esos cultivos igual se incluyen en los totales; solo cambia el
+    denominador (hectareas fisicas reales, no "hectareas-cultivo")."""
     by = list(by)
 
-    has = (
-        df[df["Tipo_norm"] == "COSECHA"]
-        .groupby(by, as_index=False)["Sup"]
-        .sum()
-        .rename(columns={"Sup": "Has"})
-    )
+    cosecha = df[df["Tipo_norm"] == "COSECHA"]
+    if has_excluye_solapados:
+        cosecha = cosecha[~cosecha["Activ_norm"].isin(CULTIVOS_EXCLUIDOS_AREA)]
+    has = cosecha.groupby(by, as_index=False)["Sup"].sum().rename(columns={"Sup": "Has"})
     has = has[has["Has"] > 0]
     if has.empty:
         return pd.DataFrame(columns=by + ["Métrica", "Etiqueta", "Valor", "Orden"])

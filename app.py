@@ -830,9 +830,7 @@ else:
     df_lote = df_f[df_f["Campo"].isin(campos_sel) & df_f["Cultivo"].isin(cultivos_sel)]
 
     lote_df = data.lote_tabla(df_lote, by=["Campo", "Cultivo"])
-    lote_total_df = data.lote_tabla(
-        df_f[df_f["Campo"].isin(campos_sel) & df_f["Cultivo"].isin(cultivos_sel)], by=["Campo"]
-    )
+    lote_total_df = data.lote_tabla(df_lote, by=["Campo"], has_excluye_solapados=True)
     lote_total_df["Cultivo"] = "Total"
 
     if lote_df.empty and lote_total_df.empty:
@@ -921,5 +919,8 @@ else:
         "(filas con c = 'P', clasificadas por Prod_labor). Gastos totales = suma de "
         "Total u\\$ por Tipo (filas con c = 'v', sin unificar categorías). Margen Neto = "
         "Ingreso Neto − Gastos totales. Rentabilidad = Margen Neto / Ingreso Neto. La "
-        "columna \"Total\" de cada Campo agrega todos sus cultivos."
+        "columna \"Total\" de cada Campo suma el Ingreso y el Gasto de todos sus cultivos, "
+        "pero las Has no incluyen Soja 2ª ni Maíz 2ª (comparten superficie física con el "
+        "cultivo de 1ª): así el \"Total\" queda por hectárea física real del campo, no por "
+        "hectárea-cultivo."
     )
