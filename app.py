@@ -206,8 +206,11 @@ if seccion.startswith("1"):
     semaforo_df = data.rendimiento_semaforo(df_f[df_f["Campo"].isin(campos_sel)])
     semaforo_df = semaforo_df[semaforo_df["Cultivo"].isin(cultivos_sel)]
 
-    pivot = semaforo_df.pivot(index="Cultivo", columns="Campaña", values="Índice (%)")
-    pivot = pivot.reindex(columns=[c for c in campana_orden if c in pivot.columns])
+    columnas_presentes = [c for c in campana_orden if c in semaforo_df["Campaña"].unique()]
+    pivot_indice = semaforo_df.pivot(index="Cultivo", columns="Campaña", values="Índice (%)")
+    pivot_indice = pivot_indice.reindex(columns=columnas_presentes)
+    pivot_rinde = semaforo_df.pivot(index="Cultivo", columns="Campaña", values="Rendimiento (t/ha)")
+    pivot_rinde = pivot_rinde.reindex(index=pivot_indice.index, columns=columnas_presentes)
 
     def _color_semaforo(val: float) -> str:
         if pd.isna(val):
@@ -220,13 +223,28 @@ if seccion.startswith("1"):
             return "background-color: #fff59d; color: black"
         return "background-color: #ef5350; color: white"
 
-    styled_pivot = pivot.style.map(_color_semaforo).format("{:.0f}%", na_rep="—")
+    def _texto_celda(rinde: float, indice: float) -> str:
+        if pd.isna(rinde) or pd.isna(indice):
+            return "—"
+        return f"{rinde:.1f} t/ha ({indice:.0f}%)"
+
+    texto_pivot = pd.DataFrame(
+        [
+            [_texto_celda(pivot_rinde.loc[r, c], pivot_indice.loc[r, c]) for c in pivot_indice.columns]
+            for r in pivot_indice.index
+        ],
+        index=pivot_indice.index,
+        columns=pivot_indice.columns,
+    )
+
+    styled_pivot = texto_pivot.style.apply(lambda _: pivot_indice.map(_color_semaforo), axis=None)
     st.dataframe(styled_pivot, use_container_width=True)
 
     st.caption(
-        "Índice = rendimiento de la campaña / promedio histórico ponderado del cultivo "
-        "(campañas seleccionadas en el filtro). Verde oscuro >105% · Verde claro 95–105% · "
-        "Amarillo 90–95% · Rojo <90%."
+        "Cada celda muestra el rendimiento real (t/ha) y, entre paréntesis, el índice = "
+        "rendimiento de la campaña / promedio histórico ponderado del cultivo (campañas "
+        "seleccionadas en el filtro). Verde oscuro >105% · Verde claro 95–105% · Amarillo "
+        "90–95% · Rojo <90%."
     )
 
 elif seccion.startswith("2"):
