@@ -851,10 +851,15 @@ else:
     lote_total_df = data.lote_tabla(df_lote, by=["Campo"], has_excluye_solapados=True)
     lote_total_df["Cultivo"] = "Total"
 
+    df_general = df_lote.copy()
+    df_general["Campo"] = "TOTAL GENERAL"
+    lote_general_df = data.lote_tabla(df_general, by=["Campo"], has_excluye_solapados=True)
+    lote_general_df["Cultivo"] = "Total"
+
     if lote_df.empty and lote_total_df.empty:
         st.info("No hay datos de cosecha para los filtros actuales.")
     else:
-        combinado = pd.concat([lote_df, lote_total_df], ignore_index=True)
+        combinado = pd.concat([lote_df, lote_total_df, lote_general_df], ignore_index=True)
 
         metricas_orden = (
             combinado[["Métrica", "Etiqueta", "Orden"]]
@@ -873,6 +878,8 @@ else:
             for cultivo in cultivos_de_campo:
                 col_order.append((campo, cultivo))
             col_order.append((campo, "Total"))
+        if not lote_general_df.empty:
+            col_order.append(("TOTAL GENERAL", "Total"))
 
         pivot = combinado.pivot_table(
             index="Métrica", columns=["Campo", "Cultivo"], values="Valor", aggfunc="first"
@@ -902,6 +909,8 @@ else:
             ".lote-tabla tr.total-col td:last-child{font-weight:600;}"
             ".lote-tabla tr.resaltada td,.lote-tabla tr.resaltada td:first-child{background:#d9ead3;font-weight:600;}"
             ".lote-tabla td.total-cell{font-weight:600;background:#f3f7f2;}"
+            ".lote-tabla td.general-cell,.lote-tabla th.general-cell{font-weight:700;background:#cfe2cf;}"
+            ".lote-tabla tr.resaltada td.general-cell{background:#b6d7b6;}"
             "</style>"
         )
         html.append("<table class='lote-tabla'>")
@@ -911,6 +920,8 @@ else:
         for campo in campos_presentes:
             span = len([c for c in col_order if c[0] == campo])
             html.append(f"<th colspan='{span}'>{campo}</th>")
+        if not lote_general_df.empty:
+            html.append("<th class='general-cell'>General</th>")
         html.append("</tr>")
 
         # Header fila 2: Cultivo / Total
@@ -924,7 +935,12 @@ else:
             html.append(f"<tr class='{row_class}'><td>{etiqueta}</td>")
             for campo, cultivo in col_order:
                 val = pivot.loc[metrica, (campo, cultivo)] if (campo, cultivo) in pivot.columns else None
-                celda_class = "total-cell" if cultivo == "Total" else ""
+                if campo == "TOTAL GENERAL":
+                    celda_class = "general-cell"
+                elif cultivo == "Total":
+                    celda_class = "total-cell"
+                else:
+                    celda_class = ""
                 html.append(f"<td class='{celda_class}'>{_formato_valor(etiqueta, val)}</td>")
             html.append("</tr>")
 
@@ -940,5 +956,7 @@ else:
         "columna \"Total\" de cada Campo suma el Ingreso y el Gasto de todos sus cultivos, "
         "pero las Has no incluyen Soja 2ª ni Maíz 2ª (comparten superficie física con el "
         "cultivo de 1ª): así el \"Total\" queda por hectárea física real del campo, no por "
-        "hectárea-cultivo."
+        "hectárea-cultivo. La columna \"General\" (al final) suma todos los Campos "
+        "seleccionados con el mismo criterio: Has sin Soja 2ª ni Maíz 2ª, y el resto de "
+        "los valores ponderados por esas hectáreas físicas totales."
     )
